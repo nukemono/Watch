@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>天測コンパス プロトタイプ</title>
+    <style>
+        body { font-family: sans-serif; background: #121212; color: #e0e0e0; padding: 20px; }
+        h1 { font-size: 1.5rem; color: #ff9800; }
+        .card { background: #1e1e1e; border: 1px solid #333; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
+        .sensor-val { font-size: 1.2rem; font-weight: bold; color: #4caf50; }
+        button { background: #ff9800; color: #000; border: none; padding: 12px 20px; font-size: 1rem; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
+        button:disabled { background: #555; color: #888; }
+        #logConsole { background: #000; color: #00ff00; font-family: monospace; padding: 10px; border-radius: 5px; height: 150px; overflow-y: scroll; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+
+    <h1>天測コンパス Prototpye (iPhone12用)</h1>
+
+    <div class="card" id="permissionCard">
+        <p>iPhoneのセンサーを有効にするには許可が必要です（屋外でテストしてください）</p>
+        <button id="btnPermission" onclick="requestSensorPermission()">センサーを許可する</button>
+    </div>
+
+    <div class="card">
+        <h3>現在のセンサー値</h3>
+        <p>太陽高度 (傾き): <span id="curAltitude" class="sensor-val">0.0</span>°</p>
+        <p>太陽方位 (磁北基準): <span id="curAzimuth" class="sensor-val">0.0</span>°</p>
+    </div>
+
+    <div class="card">
+        <h3>観測セッション</h3>
+        <button id="btnScan1" onclick="captureScan(1)" disabled>1回目の太陽を記録</button>
+        <p id="scan1Data">1回目: 未計測</p>
+        
+        <hr style="border-color:#333;">
+        
+        <button id="btnScan2" onclick="captureScan(2)" disabled>2回目の太陽を記録</button>
+        <p id="scan2Data">2回目: 未計測 (経過時間: --秒)</p>
+    </div>
+
+    <div class="card">
+        <h3>計算プロセスログ（研究・学習用）</h3>
+        <div id="logConsole">アプリを起動しました。センサーの許可を待っています...<br></div>
+    </div>
+
+    <script>
+        // 観測データを保持するオブジェクト
+        let scan1 = null;
+        let scan2 = null;
+        let scan1Time = null; // 1回目の計測時刻(エポックミリ秒)
+
+        // リアルタイムのセンサー値を保持
+        let currentAltitude = 0;
+        let currentAzimuth = 0;
+
+        // ログコンソールへの出力関数
+        function addLog(msg) {
+            const consoleEl = document.getElementById('logConsole');
+            consoleEl.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}<br>`;
+            consoleEl.scrollTop = consoleEl.scrollHeight; // 最下部へスクロール
+        }
+
+        // iPhone12 (iOS) 特有のセンサー許可リクエスト処理
+        async function requestSensorPermission() {
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    if (permission === 'granted') {
+                        addLog("iOSセンサーのアクセスが許可されました。");
+                        initSensors();
+                        document.getElementById('permissionCard').style.display = 'none';
+                        document.getElementById('btnScan1').disabled = false;
+                    } else {
+                        addLog("エラー: センサーのアクセスが拒否されました。");
+                    }
+                } catch (e) {
+                    addLog("エラー: 許可リクエスト中に問題が発生しました: " + e);
+                }
+            } else {
+                addLog("iOS以外のブラウザ、またはPC環境です。擬似的にセンサーを開始します。");
+                initSensors();
+                document.getElementById('permissionCard').style.display = 'none';
+                document.getElementById('btnScan1').disabled = false;
+            }
+        }
+
+        // センサーイベントのリスナー登録
+        function initSensors() {
+            // 方位角(コンパス)の取得
+            window.addEventListener('deviceorientation', (event) => {
+                // iOSの場合、webkitCompassHeadingが最も正確な磁北を取得できる
+                let heading = event.webkitCompassHeading || (360 - event.alpha);
+                currentAzimuth = heading ? heading.toFixed(1) : 0;
+                document.getElementById('curAzimuth').innerText = currentAzimuth;
+            }, true);
+
+            // 高度(スマホの傾き)の取得
+            window.addEventListener('deviceorientation', (event) => {
+                // betaはスマホを立てた時の前後の傾き。カメラを太陽に向ける姿勢に連動
+                // 本来はジャイロや加速度の傾きマトリクスを使うが、プロトタイプのため簡易的にbetaを使用
+                let pitch = event.beta; 
+                currentAltitude = pitch ? pitch.toFixed(1) : 0;
+                document.getElementById('curAltitude').innerText = currentAltitude;
+            }, true);
+            
+            addLog("センサーの監視を開始しました。スマホを動かして数値が変わるか確認してください。");
+        }
+
+        // 太陽の角度を記録（1回目 / 2回目）
+        function captureScan(step) {
+            if (step === 1) {
+                scan1 = { altitude: parseFloat(currentAltitude), azimuth: parseFloat(currentAzimuth) };
+                scan1Time = performance.now(); // 正確な経過時間測定用
+                document.getElementById('scan1Data').innerText = `1回目: 高度 ${scan1.altitude}° / 方位 ${scan1.azimuth}° (記録済)`;
+                document.getElementById('btnScan2').disabled = false;
+                addLog(`Step 1完了: 1回目の天体位置をロック。高度:${scan1.altitude} 方位:${scan1.azimuth}`);
+            } else if (step === 2) {
+                if (!scan1) return;
+                let scan2Time = performance.now();
+                let deltaSeconds = ((scan2Time - scan1Time) / 1000).toFixed(1); // 経過秒数
+                
+                scan2 = { altitude: parseFloat(currentAltitude), azimuth: parseFloat(currentAzimuth), delta: parseFloat(deltaSeconds) };
+                document.getElementById('scan2Data').innerText = `2回目: 高度 ${scan2.altitude}° / 方位 ${scan2.azimuth}° (経過時間: ${deltaSeconds}秒)`;
+                
+                addLog(`Step 2完了: 2回目の天体位置をロック。高度:${scan2.altitude} 方位:${scan2.azimuth} 経過時間:${deltaSeconds}秒`);
+                
+                // コアビジネスロジック：現在地逆算エンジンの起動
+                runPositionEstimation();
+            }
+        }
+
+        // 【核心】現在地と時刻の逆算ロジック（ビジネスロジック層）
+        function runPositionEstimation() {
+            addLog("Step 3: 天測航法による現在地逆算エンジンを起動します。");
+            addLog("日本国内限定エリア (緯度24°〜46° / 経度122°〜146°) の総当たり検証を開始...");
+
+            let bestLat = 0;
+            let bestLon = 0;
+            let minError = Infinity;
+            let loopCount = 0;
+
+            // プロトタイプ検証用：今日のダミー太陽赤緯（5月想定の約15度とする）
+            // 本番フェーズでは日付や気候センサーから自動推測する変数
+            const dummyDelta = 15.0; 
+
+            // 日本国内を0.5度刻みで総当たり検索（学生が計算負荷と収束を実験できる部分）
+            for (let lat = 24.0; lat <= 46.0; lat += 0.5) {
+                for (let lon = 122.0; lon <= 146.0; lon += 0.5) {
+                    loopCount++;
+
+                    // --- ここに球面三角法(フェーズ1の数式)を実装する ---
+                    // 仮想の緯度経度において、1回目の高度/方位、2回目の高度/方位になる時間をそれぞれ逆算し、
+                    // その「仮想の時間差」が、実際の経過時間(scan2.delta)とどれくらい一致するかを計算する。
+                    
+                    // ※今回のコードでは、数式ループがスマホ上でフリーズせず回るかの「枠組み検証」のため、
+                    // ダミーの数式としてランダムな誤差をシミュレートしています。
+                    let simulatedError = Math.random(); 
+
+                    if (simulatedError < minError) {
+                        minError = simulatedError;
+                        bestLat = lat;
+                        bestLon = lon;
+                    }
+                }
+            }
+
+            addLog(`総探索組み合わせ数: ${loopCount} パターン。`);
+            addLog(`[収束完了] 最小誤差ポイントをロックオン。`);
+            addLog(`推測現在地 ➔ 緯度: 北緯 ${bestLat.toFixed(1)}度 / 経度: 東経 ${bestLon.toFixed(1)}度`);
+            addLog("※現在、球面三角法のコア数式の実装・答え合わせの準備が整いました。");
+        }
+    </script>
+</body>
+</html>
