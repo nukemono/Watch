@@ -1,176 +1,74 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>天測コンパス プロトタイプ</title>
-    <style>
-        body { font-family: sans-serif; background: #121212; color: #e0e0e0; padding: 20px; }
-        h1 { font-size: 1.5rem; color: #ff9800; }
-        .card { background: #1e1e1e; border: 1px solid #333; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-        .sensor-val { font-size: 1.2rem; font-weight: bold; color: #4caf50; }
-        button { background: #ff9800; color: #000; border: none; padding: 12px 20px; font-size: 1rem; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 10px; }
-        button:disabled { background: #555; color: #888; }
-        #logConsole { background: #000; color: #00ff00; font-family: monospace; padding: 10px; border-radius: 5px; height: 150px; overflow-y: scroll; font-size: 0.85rem; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>太陽ウォッチ 検証プロトタイプ</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f6f7f8;color:#222;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:760px;margin:auto;padding:14px}.card{background:#fff;border:1px solid #ddd;border-radius:14px;padding:14px;margin-bottom:14px}h1{font-size:1.25rem;margin:0 0 6px}h2{font-size:1rem;margin:0 0 10px}.muted,.mini{color:#666;font-size:.8rem}.grid,.actions,.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}.metric{background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:9px}.label{font-size:.7rem;color:#666}.value{font-family:monospace;font-weight:700;font-size:1.05rem;word-break:break-word}.status{padding:10px;border-radius:10px;background:#fff7dd;border:1px solid #ead274;font-size:.84rem;margin:10px 0}.ok{background:#eaf8ef;border-color:#93d3ab}.bad{background:#fff0f0;border-color:#e0aaaa}button{width:100%;border:0;border-radius:10px;padding:12px 9px;font-size:16px;font-weight:700;cursor:pointer;background:#eef1f4;color:#222}.primary{background:#087f5b;color:#fff}.danger{background:#b83232;color:#fff}button:disabled{opacity:.45;cursor:not-allowed}label{display:block;font-size:.8rem;font-weight:700;margin:8px 0 4px}input,select{width:100%;padding:10px;border:1px solid #bbb;border-radius:8px;font-size:16px;background:#fff}.hidden{display:none}#cameraBox{position:relative;background:#111;border-radius:12px;overflow:hidden;aspect-ratio:4/3;margin-top:10px}video{width:100%;height:100%;object-fit:cover}.reticle{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:86px;height:86px;border:3px dashed #ffd54a;border-radius:50%;pointer-events:none}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.tab.active{background:#222;color:#fff}@media(max-width:520px){.grid,.actions,.row{grid-template-columns:1fr}}
+</style>
 </head>
-<body>
+<body><div class="wrap">
+<div class="card"><h1>☀️ 太陽ウォッチ 検証プロトタイプ</h1><div class="muted">iPhone / Androidのセンサー差、手ブレ、方位・高度の再現性、雨天時の再計算を検証します。</div></div>
 
-    <h1>天測コンパス Prototpye (iPhone12用)</h1>
+<div class="card">
+<h2>0. アクセス同意・端末環境</h2>
+<div id="envStatus" class="status">端末環境を確認しています…</div>
+<div class="grid">
+<div class="metric"><div class="label">HTTPS</div><div id="secure" class="value">--</div></div>
+<div class="metric"><div class="label">端末</div><div id="platform" class="value">--</div></div>
+<div class="metric"><div class="label">Orientation</div><div id="oriSupport" class="value">--</div></div>
+<div class="metric"><div class="label">Motion</div><div id="motSupport" class="value">--</div></div>
+<div class="metric"><div class="label">Camera API</div><div id="camSupport" class="value">--</div></div>
+<div class="metric"><div class="label">Geolocation</div><div id="geoSupport" class="value">--</div></div>
+</div>
+<div class="status">センサー・カメラ・位置情報は検証のためだけに使用します。許可は個別に行えます。位置情報は任意です。</div>
+<div class="actions"><button id="allowSensor" class="primary">① センサー利用を許可</button><button id="allowCamera">② カメラ利用を許可</button></div>
+<button id="allowGeo" style="margin-top:8px">③ 位置情報を許可（任意）</button>
+<div class="grid" style="margin-top:10px">
+<div class="metric"><div class="label">センサー</div><div id="sensorPerm" class="value">未確認</div></div>
+<div class="metric"><div class="label">カメラ</div><div id="cameraPerm" class="value">未確認</div></div>
+<div class="metric"><div class="label">位置情報</div><div id="geoPerm" class="value">任意 / 未確認</div></div>
+<div class="metric"><div class="label">実機検証</div><div id="ready" class="value">準備中</div></div>
+</div>
+<div id="help" class="status hidden"></div>
+</div>
 
-    <div class="card" id="permissionCard">
-        <p>iPhoneのセンサーを有効にするには許可が必要です（屋外でテストしてください）</p>
-        <button id="btnPermission" onclick="requestSensorPermission()">センサーを許可する</button>
-    </div>
+<div class="card"><h2>モード</h2><div class="tabs"><button id="liveTab" class="tab active">実機センサー検証</button><button id="manualTab" class="tab">手動入力 / 雨天デモ</button></div></div>
 
-    <div class="card">
-        <h3>現在のセンサー値</h3>
-        <p>太陽高度 (傾き): <span id="curAltitude" class="sensor-val">0.0</span>°</p>
-        <p>太陽方位 (磁北基準): <span id="curAzimuth" class="sensor-val">0.0</span>°</p>
-    </div>
+<section id="live">
+<div class="card"><h2>1. リアルタイム値</h2><div id="sensorStatus" class="status">上の「① センサー利用を許可」を押してください。</div>
+<div class="grid">
+<div class="metric"><div class="label">方位ソース</div><div id="source" class="value">--</div></div>
+<div class="metric"><div class="label">raw α / β / γ</div><div id="ori" class="value">--</div></div>
+<div class="metric"><div class="label">重力 x / y / z</div><div id="grav" class="value">--</div></div>
+<div class="metric"><div class="label">方位角</div><div id="heading" class="value">--</div></div>
+<div class="metric"><div class="label">暫定高度角</div><div id="elevation" class="value">--</div></div>
+</div>
+<div id="cameraBox" class="hidden"><video id="video" autoplay playsinline muted></video><div class="reticle"></div></div>
+<div class="mini">Androidのalphaは端末・ブラウザによって絶対方位でない場合があります。iOSは取得できる場合webkitCompassHeadingを優先します。</div></div>
 
-    <div class="card">
-        <h3>観測セッション</h3>
-        <button id="btnScan1" onclick="captureScan(1)" disabled>1回目の太陽を記録</button>
-        <p id="scan1Data">1回目: 未計測</p>
-        
-        <hr style="border-color:#333;">
-        
-        <button id="btnScan2" onclick="captureScan(2)" disabled>2回目の太陽を記録</button>
-        <p id="scan2Data">2回目: 未計測 (経過時間: --秒)</p>
-    </div>
+<div class="card"><h2>2. 10秒測定</h2><div class="row"><div><label>基準方位角</label><input id="truthAz" type="number" step="0.1" placeholder="例 180"></div><div><label>基準高度角</label><input id="truthAlt" type="number" step="0.1" placeholder="例 45"></div></div><label>測定条件</label><select id="condition"><option>固定</option><option>手持ち静止</option><option>照準操作</option><option>屋内</option><option>屋外</option><option>磁気ノイズ環境</option></select><button id="record" class="primary" style="margin-top:10px">10秒記録</button><div id="recordStatus" class="status">未記録</div></div>
 
-    <div class="card">
-        <h3>計算プロセスログ（研究・学習用）</h3>
-        <div id="logConsole">アプリを起動しました。センサーの許可を待っています...<br></div>
-    </div>
+<div class="card"><h2>3. 統計</h2><div class="grid"><div class="metric"><div class="label">サンプル数</div><div id="count" class="value">0</div></div><div class="metric"><div class="label">平均取得間隔</div><div id="interval" class="value">--</div></div><div class="metric"><div class="label">方位 平均 / 標準偏差</div><div id="azStats" class="value">--</div></div><div class="metric"><div class="label">高度 平均 / 標準偏差</div><div id="altStats" class="value">--</div></div><div class="metric"><div class="label">基準方位との差</div><div id="azErr" class="value">--</div></div><div class="metric"><div class="label">基準高度との差</div><div id="altErr" class="value">--</div></div></div><div class="actions" style="margin-top:10px"><button id="csv">CSV保存</button><button id="clear" class="danger">ログ消去</button></div></div>
+</section>
 
-    <script>
-        // 観測データを保持するオブジェクト
-        let scan1 = null;
-        let scan2 = null;
-        let scan1Time = null; // 1回目の計測時刻(エポックミリ秒)
-
-        // リアルタイムのセンサー値を保持
-        let currentAltitude = 0;
-        let currentAzimuth = 0;
-
-        // ログコンソールへの出力関数
-        function addLog(msg) {
-            const consoleEl = document.getElementById('logConsole');
-            consoleEl.innerHTML += `[${new Date().toLocaleTimeString()}] ${msg}<br>`;
-            consoleEl.scrollTop = consoleEl.scrollHeight; // 最下部へスクロール
-        }
-
-        // iPhone12 (iOS) 特有のセンサー許可リクエスト処理
-        async function requestSensorPermission() {
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                try {
-                    const permission = await DeviceOrientationEvent.requestPermission();
-                    if (permission === 'granted') {
-                        addLog("iOSセンサーのアクセスが許可されました。");
-                        initSensors();
-                        document.getElementById('permissionCard').style.display = 'none';
-                        document.getElementById('btnScan1').disabled = false;
-                    } else {
-                        addLog("エラー: センサーのアクセスが拒否されました。");
-                    }
-                } catch (e) {
-                    addLog("エラー: 許可リクエスト中に問題が発生しました: " + e);
-                }
-            } else {
-                addLog("iOS以外のブラウザ、またはPC環境です。擬似的にセンサーを開始します。");
-                initSensors();
-                document.getElementById('permissionCard').style.display = 'none';
-                document.getElementById('btnScan1').disabled = false;
-            }
-        }
-
-        // センサーイベントのリスナー登録
-        function initSensors() {
-            // 方位角(コンパス)の取得
-            window.addEventListener('deviceorientation', (event) => {
-                // iOSの場合、webkitCompassHeadingが最も正確な磁北を取得できる
-                let heading = event.webkitCompassHeading || (360 - event.alpha);
-                currentAzimuth = heading ? heading.toFixed(1) : 0;
-                document.getElementById('curAzimuth').innerText = currentAzimuth;
-            }, true);
-
-            // 高度(スマホの傾き)の取得
-            window.addEventListener('deviceorientation', (event) => {
-                // betaはスマホを立てた時の前後の傾き。カメラを太陽に向ける姿勢に連動
-                // 本来はジャイロや加速度の傾きマトリクスを使うが、プロトタイプのため簡易的にbetaを使用
-                let pitch = event.beta; 
-                currentAltitude = pitch ? pitch.toFixed(1) : 0;
-                document.getElementById('curAltitude').innerText = currentAltitude;
-            }, true);
-            
-            addLog("センサーの監視を開始しました。スマホを動かして数値が変わるか確認してください。");
-        }
-
-        // 太陽の角度を記録（1回目 / 2回目）
-        function captureScan(step) {
-            if (step === 1) {
-                scan1 = { altitude: parseFloat(currentAltitude), azimuth: parseFloat(currentAzimuth) };
-                scan1Time = performance.now(); // 正確な経過時間測定用
-                document.getElementById('scan1Data').innerText = `1回目: 高度 ${scan1.altitude}° / 方位 ${scan1.azimuth}° (記録済)`;
-                document.getElementById('btnScan2').disabled = false;
-                addLog(`Step 1完了: 1回目の天体位置をロック。高度:${scan1.altitude} 方位:${scan1.azimuth}`);
-            } else if (step === 2) {
-                if (!scan1) return;
-                let scan2Time = performance.now();
-                let deltaSeconds = ((scan2Time - scan1Time) / 1000).toFixed(1); // 経過秒数
-                
-                scan2 = { altitude: parseFloat(currentAltitude), azimuth: parseFloat(currentAzimuth), delta: parseFloat(deltaSeconds) };
-                document.getElementById('scan2Data').innerText = `2回目: 高度 ${scan2.altitude}° / 方位 ${scan2.azimuth}° (経過時間: ${deltaSeconds}秒)`;
-                
-                addLog(`Step 2完了: 2回目の天体位置をロック。高度:${scan2.altitude} 方位:${scan2.azimuth} 経過時間:${deltaSeconds}秒`);
-                
-                // コアビジネスロジック：現在地逆算エンジンの起動
-                runPositionEstimation();
-            }
-        }
-
-        // 【核心】現在地と時刻の逆算ロジック（ビジネスロジック層）
-        function runPositionEstimation() {
-            addLog("Step 3: 天測航法による現在地逆算エンジンを起動します。");
-            addLog("日本国内限定エリア (緯度24°〜46° / 経度122°〜146°) の総当たり検証を開始...");
-
-            let bestLat = 0;
-            let bestLon = 0;
-            let minError = Infinity;
-            let loopCount = 0;
-
-            // プロトタイプ検証用：今日のダミー太陽赤緯（5月想定の約15度とする）
-            // 本番フェーズでは日付や気候センサーから自動推測する変数
-            const dummyDelta = 15.0; 
-
-            // 日本国内を0.5度刻みで総当たり検索（学生が計算負荷と収束を実験できる部分）
-            for (let lat = 24.0; lat <= 46.0; lat += 0.5) {
-                for (let lon = 122.0; lon <= 146.0; lon += 0.5) {
-                    loopCount++;
-
-                    // --- ここに球面三角法(フェーズ1の数式)を実装する ---
-                    // 仮想の緯度経度において、1回目の高度/方位、2回目の高度/方位になる時間をそれぞれ逆算し、
-                    // その「仮想の時間差」が、実際の経過時間(scan2.delta)とどれくらい一致するかを計算する。
-                    
-                    // ※今回のコードでは、数式ループがスマホ上でフリーズせず回るかの「枠組み検証」のため、
-                    // ダミーの数式としてランダムな誤差をシミュレートしています。
-                    let simulatedError = Math.random(); 
-
-                    if (simulatedError < minError) {
-                        minError = simulatedError;
-                        bestLat = lat;
-                        bestLon = lon;
-                    }
-                }
-            }
-
-            addLog(`総探索組み合わせ数: ${loopCount} パターン。`);
-            addLog(`[収束完了] 最小誤差ポイントをロックオン。`);
-            addLog(`推測現在地 ➔ 緯度: 北緯 ${bestLat.toFixed(1)}度 / 経度: 東経 ${bestLon.toFixed(1)}度`);
-            addLog("※現在、球面三角法のコア数式の実装・答え合わせの準備が整いました。");
-        }
-    </script>
-</body>
-</html>
+<section id="manual" class="hidden"><div class="card"><h2>雨天デモ：観測値から再計算</h2><div class="status">保存済みの実測値やサンプル値を入力して、雨天でも計算過程を確認できます。</div><div class="row"><div><label>緯度</label><input id="lat" type="number" step="0.0001" value="34.69"></div><div><label>経度</label><input id="lon" type="number" step="0.0001" value="135.50"></div><div><label>太陽高度角</label><input id="alt" type="number" step="0.1" value="45"></div><div><label>太陽方位角</label><input id="az" type="number" step="0.1" value="180"></div></div><label>観測日</label><input id="date" type="date"><button id="calc" class="primary" style="margin-top:10px">再計算する</button></div><div class="card"><h2>推定結果</h2><div class="grid"><div class="metric"><div class="label">推定JST</div><div id="result" class="value" style="font-size:1.8rem">--:--</div></div><div class="metric"><div class="label">地方太陽時</div><div id="solarTime" class="value">--</div></div><div class="metric"><div class="label">赤緯</div><div id="dec" class="value">--</div></div><div class="metric"><div class="label">均時差</div><div id="eot" class="value">--</div></div></div></div></section>
+</div>
+<script>
+(()=>{const $=id=>document.getElementById(id),R=Math.PI/180,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));let sensorOK=false,cameraOK=false,geoOK=false,listeners=false,stream=null,recording=false,rows=[],session=[],last=0;let cur={a:null,b:null,g:null,x:null,y:null,z:null,h:null,e:null,s:"未取得"};const ua=navigator.userAgent,p=/iPhone|iPad|iPod/.test(ua)?"iOS":/Android/.test(ua)?"Android":"その他";
+function txt(i,v){$(i).textContent=v}function fail(m){txt("help",m);$("help").className="status bad"}function ready(){txt("sensorPerm",sensorOK?"許可済み":"未許可");txt("cameraPerm",cameraOK?"許可済み":"未許可");txt("geoPerm",geoOK?"許可済み":"任意 / 未許可");txt("ready",sensorOK&&cameraOK?"OK":"許可待ち")}
+function env(){const s=window.isSecureContext,o=typeof DeviceOrientationEvent!=="undefined",m=typeof DeviceMotionEvent!=="undefined",c=!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia),g="geolocation" in navigator;txt("secure",s?"OK":"NG");txt("platform",p);txt("oriSupport",o?"対応":"非対応");txt("motSupport",m?"対応":"非対応");txt("camSupport",c?"対応":"非対応");txt("geoSupport",g?"対応":"非対応");const bad=[];if(!s)bad.push("HTTPSではありません");if(!o)bad.push("Orientation非対応");if(!m)bad.push("Motion非対応");if(!c)bad.push("Camera非対応");txt("envStatus",bad.length?"注意: "+bad.join(" / "):"環境チェックOK。アクセスを許可してください。");$("envStatus").className=bad.length?"status bad":"status ok"}
+async function allowSensor(){try{if(!window.isSecureContext)throw Error("HTTPSで開いてください");if(typeof DeviceOrientationEvent==="undefined")throw Error("DeviceOrientation非対応");if(typeof DeviceOrientationEvent.requestPermission==="function"){const r=await DeviceOrientationEvent.requestPermission();if(r!=="granted")throw Error("Orientationが許可されませんでした")}if(typeof DeviceMotionEvent!=="undefined"&&typeof DeviceMotionEvent.requestPermission==="function"){const r=await DeviceMotionEvent.requestPermission();if(r!=="granted")throw Error("Motionが許可されませんでした")}sensorOK=true;startListeners();txt("sensorStatus","センサー取得中です");$("sensorStatus").className="status ok";$("help").classList.add("hidden");ready()}catch(e){sensorOK=false;ready();fail("センサー許可失敗: "+e.message+"。iPhoneはSafari、AndroidはChromeでこのURLを直接開いてください。")}}
+async function allowCamera(){try{if(!window.isSecureContext)throw Error("HTTPSで開いてください");stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});cameraOK=true;$("video").srcObject=stream;$("cameraBox").classList.remove("hidden");$("help").classList.add("hidden");ready()}catch(e){cameraOK=false;ready();fail("カメラ許可失敗 ("+(e.name||"Error")+"): "+(e.message||""))}}
+function allowGeo(){if(!navigator.geolocation)return fail("位置情報API非対応");navigator.geolocation.getCurrentPosition(pos=>{geoOK=true;txt("lat",pos.coords.latitude.toFixed(5));txt("lon",pos.coords.longitude.toFixed(5));ready()},e=>fail("位置情報許可失敗: "+e.message),{enableHighAccuracy:true,timeout:10000})}
+function startListeners(){if(listeners)return;listeners=true;window.addEventListener("deviceorientation",e=>{cur.a=Number.isFinite(e.alpha)?e.alpha:null;cur.b=Number.isFinite(e.beta)?e.beta:null;cur.g=Number.isFinite(e.gamma)?e.gamma:null;if(Number.isFinite(e.webkitCompassHeading)){cur.h=(e.webkitCompassHeading+360)%360;cur.s="webkitCompassHeading"}else if(e.absolute===true&&Number.isFinite(e.alpha)){cur.h=(360-e.alpha+360)%360;cur.s="absolute alpha換算"}else if(Number.isFinite(e.alpha)){cur.h=null;cur.s="alpha取得 / 絶対方位保証なし"}render();sample()},true);window.addEventListener("devicemotion",e=>{const a=e.accelerationIncludingGravity;if(a){cur.x=Number.isFinite(a.x)?a.x:null;cur.y=Number.isFinite(a.y)?a.y:null;cur.z=Number.isFinite(a.z)?a.z:null;if(Number.isFinite(cur.y)&&Number.isFinite(cur.z))cur.e=clamp(Math.abs(Math.atan2(-cur.z,Math.max(.001,Math.abs(cur.y)))/R),0,90)}render();sample()},true)}
+function render(){txt("source",cur.s);txt("ori",[cur.a,cur.b,cur.g].map(v=>Number.isFinite(v)?v.toFixed(1):"--").join(" / "));txt("grav",[cur.x,cur.y,cur.z].map(v=>Number.isFinite(v)?v.toFixed(2):"--").join(" / "));txt("heading",Number.isFinite(cur.h)?cur.h.toFixed(1)+"°":"--");txt("elevation",Number.isFinite(cur.e)?cur.e.toFixed(1)+"°":"--")}
+function sample(){if(!recording)return;const n=performance.now();if(n-last<20)return;last=n;session.push({iso:new Date().toISOString(),ms:n,platform:p,condition:$("condition").value,source:cur.s,alpha:cur.a,beta:cur.b,gamma:cur.g,gx:cur.x,gy:cur.y,gz:cur.z,heading:cur.h,elevation:cur.e,truthAz:parseFloat($("truthAz").value),truthAlt:parseFloat($("truthAlt").value)})}
+const mean=a=>{a=a.filter(Number.isFinite);return a.length?a.reduce((s,v)=>s+v,0)/a.length:null},sd=a=>{a=a.filter(Number.isFinite);if(a.length<2)return null;const m=mean(a);return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/(a.length-1))},cd=(a,b)=>((a-b+540)%360)-180;function cmean(a){a=a.filter(Number.isFinite);if(!a.length)return null;return (Math.atan2(mean(a.map(v=>Math.sin(v*R))),mean(a.map(v=>Math.cos(v*R))))/R+360)%360}
+function stats(a){const hs=a.map(r=>r.heading),es=a.map(r=>r.elevation),ts=a.map(r=>r.ms),hm=cmean(hs),em=mean(es),hsd=Number.isFinite(hm)?sd(hs.filter(Number.isFinite).map(v=>cd(v,hm))):null,esd=sd(es);txt("count",a.length);txt("interval",ts.length>1?mean(ts.slice(1).map((t,i)=>t-ts[i])).toFixed(1)+" ms":"--");txt("azStats",Number.isFinite(hm)?hm.toFixed(1)+"° / "+(Number.isFinite(hsd)?hsd.toFixed(2):"--")+"°":"--");txt("altStats",Number.isFinite(em)?em.toFixed(1)+"° / "+(Number.isFinite(esd)?esd.toFixed(2):"--")+"°":"--");const ta=parseFloat($("truthAz").value),te=parseFloat($("truthAlt").value);txt("azErr",Number.isFinite(ta)&&Number.isFinite(hm)?cd(hm,ta).toFixed(1)+"°":"--");txt("altErr",Number.isFinite(te)&&Number.isFinite(em)?(em-te).toFixed(1)+"°":"--")}
+function record(){if(!sensorOK)return fail("先にセンサー利用を許可してください");if(recording)return;session=[];last=0;recording=true;let s=10;txt("recordStatus","記録中…10秒");const t=setInterval(()=>{s--;txt("recordStatus","記録中…"+s+"秒");if(s<=0){clearInterval(t);recording=false;rows.push(...session);stats(session);txt("recordStatus","完了: "+session.length+"サンプル");$("recordStatus").className="status ok"}},1000)}
+function csv(){if(!rows.length)return alert("ログがありません");const k=["iso","platform","condition","source","alpha","beta","gamma","gx","gy","gz","heading","elevation","truthAz","truthAlt"],esc=v=>'"'+String(v??"").replaceAll('"','""')+'"',data=[k.join(","),...rows.map(r=>k.map(x=>esc(r[x])).join(","))].join("\n"),b=new Blob(["\ufeff"+data],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(b);a.download="solarwatch_sensor_"+Date.now()+".csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function doy(d){const [y,m,da]=d.split("-").map(Number);return Math.floor((Date.UTC(y,m-1,da)-Date.UTC(y,0,0))/86400000)}function calc(){const la=parseFloat($("lat").value),lo=parseFloat($("lon").value),al=parseFloat($("alt").value),az=parseFloat($("az").value),d=$("date").value;if(![la,lo,al,az].every(Number.isFinite)||!d)return alert("入力を確認してください");const n=doy(d),B=(360/365)*(n-81)*R,de=23.45*Math.sin((360/365)*(n-81)*R),eot=9.87*Math.sin(2*B)-7.53*Math.cos(B)-1.5*Math.sin(B),phi=la*R,delta=de*R,h=al*R;let c=(Math.sin(h)-Math.sin(phi)*Math.sin(delta))/(Math.cos(phi)*Math.cos(delta));c=clamp(c,-1,1);let H=Math.acos(c)/R;if(az<180)H=-H;const solar=12+H/15,jst=(solar-(4*(lo-135)+eot)/60+24)%24,fmt=x=>{let m=Math.round(x*60)%1440;return String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0")};txt("result",fmt(jst));txt("solarTime",fmt(solar));txt("dec",de.toFixed(2)+"°");txt("eot",eot.toFixed(2)+"分")}
+$("allowSensor").addEventListener("click",allowSensor);$("allowCamera").addEventListener("click",allowCamera);$("allowGeo").addEventListener("click",allowGeo);$("record").addEventListener("click",record);$("csv").addEventListener("click",csv);$("clear").addEventListener("click",()=>{rows=[];session=[];stats([]);txt("recordStatus","ログを消去しました")});$("liveTab").addEventListener("click",()=>{$("live").classList.remove("hidden");$("manual").classList.add("hidden");$("liveTab").classList.add("active");$("manualTab").classList.remove("active")});$("manualTab").addEventListener("click",()=>{$("manual").classList.remove("hidden");$("live").classList.add("hidden");$("manualTab").classList.add("active");$("liveTab").classList.remove("active")});$("calc").addEventListener("click",calc);const d=new Date();$("date").value=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");env();ready()})();
+</script></body></html>
