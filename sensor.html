@@ -225,7 +225,7 @@ const ua=navigator.userAgent;
 const os=/iPhone|iPad|iPod/.test(ua)?"iPhone / iPad":/Android/.test(ua)?"Android":"その他";
 let sensorOK=false, stream=null, watchId=null, recording=false, all=[], session=[], currentSession="", lastSample=0, currentMode="free"; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null};
 let geo={lat:null,lon:null,alt:null,accuracy:null,altAccuracy:null,timestamp:null};
-let cur={a:null,b:null,g:null,absolute:null,iosHeading:null,iosAccuracy:null,absAlpha:null,heading:null,source:"--",elev:null,camera3d:null,ax:null,ay:null,az:null,gx:null,gy:null,gz:null,ra:null,rb:null,rg:null,motionInterval:null,oriTs:null,motTs:null};
+let cur={a:null,b:null,g:null,absolute:null,iosHeading:null,iosAccuracy:null,absAlpha:null,heading:null,source:"--",elev:null,camera3d:null,ax:null,ay:null,az:null,gx:null,gy:null,gz:null,ra:null,rb:null,rg:null,motionInterval:null,oriTs:null,motTs:null,magX:null,magY:null,magZ:null,magTs:null,magError:"",prev3dHeading:null,last3dJump:null};
 const scenarios=[
 {name:"北を向き、水平",h:0,e:0},
 {name:"東を向き、水平から30°上へ",h:90,e:30},
@@ -252,7 +252,7 @@ function arrangeLayout(){
  const order={
   cardTitle:0,cardStart:1,cardMode:2,cardHeadingCal:3,cardElevationCal:4,
   cardRecord:5,freePanel:6,referencePanel:6,guidedPanel:6,solarPanel:6,
-  cardDiagnosis:7,cardRealtime:8,card3d:9,cardBasic:10,cardMeta:11,cardCsv:12
+  cardDiagnosis:7,cardRealtime:8,cardMag:9,card3d:10,cardBasic:11,cardMeta:12,cardCsv:13
  };
  for(const [id,o] of Object.entries(order)){const e=$(id);if(e)e.style.order=o}
  const mount=$("cameraMount"),cam=$("cameraBox");if(mount&&cam)mount.appendChild(cam);
@@ -285,12 +285,49 @@ document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>selectMode(b.dataset.
 
 function env(){txt("platform",os+" / "+navigator.platform);const p=[];if(!window.isSecureContext)p.push("HTTPSではありません");if(typeof DeviceOrientationEvent==="undefined")p.push("方向センサー非対応");txt("env",p.length?"注意: "+p.join(" / "):"環境確認OK。アクセス許可後に測定できます");$("env").className=p.length?"status bad":"status ok"}
 
+let magnetometerSensor=null;
+async function startMagnetometer(){
+ txt("magSupport","Magnetometer" in window?"対応候補":"非対応");
+ if(!("Magnetometer" in window)){txt("magStatus","このブラウザでは非対応");return}
+ try{
+  magnetometerSensor=new Magnetometer({frequency:60});
+  magnetometerSensor.addEventListener("reading",()=>{
+   cur.magX=finite(magnetometerSensor.x)?magnetometerSensor.x:null;
+   cur.magY=finite(magnetometerSensor.y)?magnetometerSensor.y:null;
+   cur.magZ=finite(magnetometerSensor.z)?magnetometerSensor.z:null;
+   cur.magTs=finite(magnetometerSensor.timestamp)?magnetometerSensor.timestamp:performance.now();
+   cur.magError="";
+   txt("magStatus","取得中");
+   renderMagnetometer();
+  });
+  magnetometerSensor.addEventListener("error",e=>{
+   cur.magError=(e.error?.name||"Error")+": "+(e.error?.message||"");
+   txt("magStatus",cur.magError);
+  });
+  magnetometerSensor.start();
+ }catch(e){
+  cur.magError=(e.name||"Error")+": "+(e.message||"");
+  txt("magStatus",cur.magError);
+ }
+}
+function renderMagnetometer(){
+ const vals=[cur.magX,cur.magY,cur.magZ];
+ txt("magXYZ",vals.every(finite)?vals.map(v=>v.toFixed(2)).join(" / "):"--");
+ const bm=vals.every(finite)?Math.hypot(...vals):null;
+ txt("magMagnitude",finite(bm)?bm.toFixed(2):"--");
+ txt("magOsHeading",finite(cur.rawHeading)?cur.rawHeading.toFixed(1)+"°":"--");
+ const p=primary3d();
+ txt("magHeadingDelta",p&&finite(p.heading)&&finite(cur.rawHeading)?(cd(p.heading,cur.rawHeading)>=0?"+":"")+cd(p.heading,cur.rawHeading).toFixed(1)+"°":"--");
+ txt("magHorizontalStrength",p&&finite(p.horizontal)?p.horizontal.toFixed(4):"--");
+ txt("magJump",finite(cur.last3dJump)?(cur.last3dJump>=0?"+":"")+cur.last3dJump.toFixed(1)+"°":"--");
+}
+
 async function startAll(){
  try{
   if(!window.isSecureContext)throw Error("HTTPSで開いてください");
   if(typeof DeviceOrientationEvent!=="undefined"&&typeof DeviceOrientationEvent.requestPermission==="function"){if(await DeviceOrientationEvent.requestPermission()!=="granted")throw Error("方向センサーが許可されませんでした")}
   if(typeof DeviceMotionEvent!=="undefined"&&typeof DeviceMotionEvent.requestPermission==="function"){if(await DeviceMotionEvent.requestPermission()!=="granted")throw Error("動きセンサーが許可されませんでした")}
-  sensorOK=true;startSensors();startGeo();await startCamera();
+  sensorOK=true;startSensors();startGeo();startMagnetometer();await startCamera();
   txt("sensorStatus","センサー取得中");$("sensorStatus").className="status ok";$("help").classList.add("hidden")
  }catch(e){txt("help","開始エラー: "+e.message);$("help").className="status bad"}
 }
@@ -367,6 +404,10 @@ function startSensors(){
   else{rawHeading=null;cur.source="北基準方位を確定できず"}
   cur.rawHeading=rawHeading;cur.heading=finite(rawHeading)?norm(rawHeading+(headingCalibration.enabled?headingCalibration.offset:0)):null;
   cur.camera3d=cameraVectorFromOrientation(cur.a,cur.b,cur.g);
+  if(cur.camera3d&&finite(cur.camera3d.rawHeading)){
+   if(finite(cur.prev3dHeading))cur.last3dJump=cd(cur.camera3d.rawHeading,cur.prev3dHeading);
+   cur.prev3dHeading=cur.camera3d.rawHeading;
+  }
   if(finite(cur.b)&&finite(cur.g)){const vz=-Math.cos(cur.b*rad)*Math.cos(cur.g*rad);cur.elev=Math.max(-90,Math.min(90,Math.asin(vz)/rad))}
   render();sample()
  };
@@ -414,7 +455,7 @@ function render(){
  txt("headingSource",cur.source);txt("compassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");
  txt("quickSensorState",sensorOK?"取得中":"未開始");
  txt("quickCompassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");
- const ce=calibratedElevationValue();txt("calibratedElevation",finite(ce)?ce.toFixed(1)+"°":"--");
+ const ce=calibratedElevationValue();txt("calibratedElevation",finite(ce)?ce.toFixed(1)+"°":"--");renderMagnetometer();
  updateReference();updateGuided();updateFocus();if(currentMode==="solar")updateSolarEstimate()
 }
 
@@ -457,7 +498,13 @@ function makeRow(){
   session_id:currentSession,local_time:local(now),iso_time:now.toISOString(),epoch_ms:now.getTime(),validation_mode:currentMode,
   device_name:$("deviceId").value,os_detected:os,user_agent:ua,place_type:$("place").value,phone_height_from_ground_m:h,measurement_condition:$("condition").value,notes:$("notes").value,
   latitude:geo.lat,longitude:geo.lon,gps_altitude_m:geo.alt,gps_horizontal_accuracy_m:geo.accuracy,gps_altitude_accuracy_m:geo.altAccuracy,gps_timestamp_ms:geo.timestamp,
-  raw_heading_deg:cur.rawHeading,legacy_corrected_heading_deg:cur.heading,north_zero_heading_deg:primaryHeading(),heading_calibration_enabled:headingCalibration.enabled,heading_calibration_offset_deg:headingCalibration.offset,orientation_frame_offset_deg:headingCalibration.orientationFrameOffset,orientation_top_heading_from_alpha_deg:orientationTopHeadingFromAlpha(),heading_raw_at_north_deg:headingCalibration.rawAtNorth,heading_source:cur.source,orientation_alpha_deg:cur.a,orientation_beta_deg:cur.b,orientation_gamma_deg:cur.g,orientation_absolute:cur.absolute,camera3d_east:cur.camera3d?cur.camera3d.east:null,camera3d_north:cur.camera3d?cur.camera3d.north:null,camera3d_up:cur.camera3d?cur.camera3d.up:null,camera3d_horizontal_strength:cur.camera3d?cur.camera3d.horizontal:null,camera3d_raw_heading_deg:cur.camera3d?cur.camera3d.rawHeading:null,camera3d_heading_deg:primary3d()?primary3d().heading:null,camera3d_elevation_deg:cur.camera3d?cur.camera3d.elevation:null,camera3d_heading_low_confidence:cur.camera3d?cur.camera3d.horizontal<0.18:null,
+  raw_heading_deg:cur.rawHeading,legacy_corrected_heading_deg:cur.heading,north_zero_heading_deg:primaryHeading(),heading_calibration_enabled:headingCalibration.enabled,heading_calibration_offset_deg:headingCalibration.offset,orientation_frame_offset_deg:headingCalibration.orientationFrameOffset,orientation_top_heading_from_alpha_deg:orientationTopHeadingFromAlpha(),heading_raw_at_north_deg:headingCalibration.rawAtNorth,heading_source:cur.source,orientation_alpha_deg:cur.a,orientation_beta_deg:cur.b,orientation_gamma_deg:cur.g,orientation_absolute:cur.absolute,camera3d_east:cur.camera3d?cur.camera3d.east:null,camera3d_north:cur.camera3d?cur.camera3d.north:null,camera3d_up:cur.camera3d?cur.camera3d.up:null,
+  camera3d_east_sign:cur.camera3d?Math.sign(cur.camera3d.east):null,camera3d_north_sign:cur.camera3d?Math.sign(cur.camera3d.north):null,camera3d_up_sign:cur.camera3d?Math.sign(cur.camera3d.up):null,camera3d_horizontal_strength:cur.camera3d?cur.camera3d.horizontal:null,camera3d_raw_heading_deg:cur.camera3d?cur.camera3d.rawHeading:null,camera3d_heading_deg:primary3d()?primary3d().heading:null,camera3d_elevation_deg:cur.camera3d?cur.camera3d.elevation:null,camera3d_heading_low_confidence:cur.camera3d?cur.camera3d.horizontal<0.18:null,
+  magnetometer_x:cur.magX,magnetometer_y:cur.magY,magnetometer_z:cur.magZ,
+  magnetometer_magnitude:[cur.magX,cur.magY,cur.magZ].every(finite)?Math.hypot(cur.magX,cur.magY,cur.magZ):null,
+  magnetometer_timestamp:cur.magTs,magnetometer_error:cur.magError,
+  os_vs_3d_heading_delta_deg:(primary3d()&&finite(primary3d().heading)&&finite(cur.rawHeading))?cd(primary3d().heading,cur.rawHeading):null,
+  camera3d_step_jump_deg:cur.last3dJump,
   webkit_compass_heading_deg:cur.iosHeading,webkit_compass_accuracy_deg:cur.iosAccuracy,absolute_event_alpha_deg:cur.absAlpha,legacy_elevation_candidate_deg:cur.elev,gravity_calibrated_elevation_deg:calibratedElevationValue(),calibrated_elevation_deg:primaryElevation(),calibration_horizontal_gravity:calibration.horizontal?calibration.horizontal.join("|"):"",calibration_zenith_gravity:calibration.zenith?calibration.zenith.join("|"):"",
   acceleration_x_mps2:cur.ax,acceleration_y_mps2:cur.ay,acceleration_z_mps2:cur.az,gravity_accel_x_mps2:cur.gx,gravity_accel_y_mps2:cur.gy,gravity_accel_z_mps2:cur.gz,
   rotation_alpha_dps:cur.ra,rotation_beta_dps:cur.rb,rotation_gamma_dps:cur.rg,motion_interval_ms:cur.motionInterval,orientation_event_timestamp_ms:cur.oriTs,motion_event_timestamp_ms:cur.motTs,
