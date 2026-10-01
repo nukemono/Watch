@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>太陽ウォッチ センサー検証 v20-ios-heading-135-correction</title>
+<title>太陽ウォッチ センサー検証 v21-ios-heading-jump-correction</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f6f7f8;color:#222;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:920px;margin:auto;padding:14px}.card{background:#fff;border:1px solid #ddd;border-radius:14px;padding:14px;margin-bottom:14px}h1{font-size:1.3rem;margin:0 0 6px}h2{font-size:1rem;margin:0 0 10px}.muted,.mini{color:#666;font-size:.82rem}.grid,.row,.actions,.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.metric{background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:9px;min-width:0}.label{font-size:.72rem;color:#666}.value{font-family:ui-monospace,monospace;font-weight:700;font-size:1rem;word-break:break-word}.big{font-size:1.45rem}.status{padding:10px;border-radius:10px;background:#fff7dd;border:1px solid #ead274;font-size:.86rem;margin:10px 0}.ok{background:#eaf8ef;border-color:#93d3ab}.warn{background:#fff7dd;border-color:#ead274}.bad{background:#fff0f0;border-color:#e0aaaa}.info{background:#edf4ff;border-color:#abc5ef}.pill{display:inline-block;border-radius:999px;padding:5px 9px;font-size:.78rem;font-weight:700}.pill.ok{background:#dff3e7}.pill.warn{background:#fff0b8}.pill.bad{background:#ffdada}button{width:100%;border:0;border-radius:10px;padding:12px 9px;font-size:16px;font-weight:700;cursor:pointer;background:#eef1f4;color:#222}.primary{background:#087f5b;color:#fff}.danger{background:#b83232;color:#fff}.tab.active{background:#222;color:#fff}button:disabled{opacity:.45;cursor:not-allowed}label{display:block;font-size:.82rem;font-weight:700;margin:8px 0 4px}input,select,textarea{width:100%;padding:10px;border:1px solid #bbb;border-radius:8px;font-size:16px;background:#fff}textarea{min-height:80px}.hidden{display:none}.back{display:inline-block;margin-bottom:12px;color:#087f5b;text-decoration:none;font-weight:700}#cameraBox{position:relative;background:#111;border-radius:12px;overflow:hidden;aspect-ratio:4/3;margin-top:10px}video{width:100%;height:100%;object-fit:cover}.reticle{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:88px;height:88px;border:3px dashed #ffd54a;border-radius:50%;pointer-events:none}.csvbox{font-family:ui-monospace,monospace;font-size:12px;white-space:pre;overflow:auto;max-height:300px;background:#111;color:#eee;padding:10px;border-radius:10px}.score{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #ddd;border-radius:10px;padding:10px;margin:7px 0}.modepanel{display:none}.modepanel.active{display:block}.wrap{display:flex;flex-direction:column}.measure-focus{border:2px solid #087f5b}.measure-values{grid-template-columns:repeat(3,1fr)}.section-note{font-size:.76rem;color:#666;margin-top:6px}.detail-card{background:#fbfbfb}@media(max-width:620px){.grid,.row,.actions,.tabs,.measure-values{grid-template-columns:1fr 1fr}.measure-focus #record{position:sticky;bottom:10px;z-index:5;box-shadow:0 4px 16px rgba(0,0,0,.18)}}
 .measure-console{border:2px solid #087f5b}.measure-live-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.live-main{border:2px solid #087f5b;background:#f0fbf7}.live-number{font-size:2rem}.record-essential{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.record-essential-item{border:3px solid #087f5b;border-radius:12px;padding:12px;text-align:center;background:#f0fbf7}.record-essential-label{font-size:.8rem;font-weight:700;color:#555}.record-essential-value{font-family:ui-monospace,monospace;font-size:2.4rem;font-weight:800;line-height:1.15}.record-button{font-size:18px;padding:15px}.measure-console.recording-active{position:sticky;top:6px;z-index:20;box-shadow:0 6px 20px rgba(0,0,0,.18)}.measure-console.recording-active .status.info{display:none}@media(max-width:620px){.measure-live-grid{grid-template-columns:1fr 1fr}.live-number{font-size:1.8rem}.measure-console.recording-active{top:0;border-radius:0;margin-left:-14px;margin-right:-14px;padding-left:14px;padding-right:14px}}
@@ -14,7 +14,7 @@
 <a class="back" href="index.html">← プロトタイプ選択へ</a>
 
 <div class="card">
-<h1>📡 センサー検証プロトタイプ v20-ios-heading-135-correction</h1>
+<h1>📡 センサー検証プロトタイプ v21-ios-heading-jump-correction</h1>
 <div class="muted">センサー値を集めながら、その場で妥当性を確認する検証版です。地磁気・OS方位・端末姿勢を分離して検証する版です。主方位はOS側の方位値、3D方位は診断用です。高度角は液晶面の前後回転を表す DeviceOrientation beta を0〜359°へ正規化して表示します。液晶上向き水平=0°、液晶手前向き直角=90°、液晶下向き水平=180°、液晶反対向き直角=270°、一周で360°→0°です。重力ベクトル方式は比較用として残します。</div>
 </div>
 
@@ -111,7 +111,7 @@
 <div class="metric"><div class="label">360 - webkitCompassHeading</div><div id="iosHeadingInvertedDisplay" class="value">--</div></div>
 <div class="metric"><div class="label">alpha 生値</div><div id="iosAlphaRawDisplay" class="value">--</div></div>
 <div class="metric"><div class="label">360 - alpha</div><div id="iosAlphaInvertedDisplay" class="value">--</div></div>
-<div class="metric"><div class="label">webkitCompassHeading と 360-alpha の差</div><div id="iosHeadingVsAlphaDisplay" class="value">--</div></div><div class="metric"><div class="label">135°補正後方位</div><div id="iosHeadingCorrectedDisplay" class="value">--</div></div><div class="metric"><div class="label">補正適用</div><div id="iosHeadingCorrectionDisplay" class="value">--</div></div>
+<div class="metric"><div class="label">webkitCompassHeading と 360-alpha の差</div><div id="iosHeadingVsAlphaDisplay" class="value">--</div></div><div class="metric"><div class="label">反転検知補正後方位</div><div id="iosHeadingCorrectedDisplay" class="value">--</div></div><div class="metric"><div class="label">補正適用</div><div id="iosHeadingCorrectionDisplay" class="value">--</div></div>
 <div class="metric"><div class="label">現在の高度角</div><div id="iosElevationDisplay" class="value">--</div></div>
 </div>
 <div class="mini">検証では北を向いたまま高度だけをゆっくり上げ、webkitCompassHeading / alpha / beta / gamma / 高度角を同時記録します。</div>
@@ -212,11 +212,11 @@
 
 <div class="card measure-console" id="cardRecord">
 <h2>6. 10秒測定</h2><div class="mini">UI版: record-sampling-v3</div>
-<div class="status info">測定中はここだけ見れば高度角と方位の変化を追えます。iPhoneでは高度135°以上で webkitCompassHeading に180°を加える試験補正を主方位へ適用しています。生値と補正後を同時に確認してください。</div>
+<div class="status info">測定中はここだけ見れば高度角と方位の変化を追えます。iPhoneでは高度120〜150°付近で webkitCompassHeading が約180°ジャンプした瞬間だけ反転状態を切り替え、その状態中は+180°して打ち消す試験補正を適用しています。</div>
 <div class="measure-live-grid">
 <div class="metric live-main"><div class="label">高度角（水平0°）</div><div id="recordLiveElevation" class="value live-number">--</div></div>
 <div class="metric live-main"><div class="label">採用方位（OS方位）</div><div id="recordLiveHeading" class="value live-number">--</div></div>
-<div class="metric"><div class="label">webkitCompassHeading 生値</div><div id="recordIosHeading" class="value">--</div></div><div class="metric"><div class="label">135°補正後のiPhone方位</div><div id="recordIosHeadingCorrected" class="value">--</div></div><div class="metric"><div class="label">135°補正状態</div><div id="recordIosCorrectionState" class="value">--</div></div>
+<div class="metric"><div class="label">webkitCompassHeading 生値</div><div id="recordIosHeading" class="value">--</div></div><div class="metric"><div class="label">反転検知補正後のiPhone方位</div><div id="recordIosHeadingCorrected" class="value">--</div></div><div class="metric"><div class="label">反転検知補正状態</div><div id="recordIosCorrectionState" class="value">--</div></div>
 <div class="metric"><div class="label">alpha</div><div id="recordAlpha" class="value">--</div></div>
 <div class="metric"><div class="label">360 - alpha</div><div id="recordAlphaInv" class="value">--</div></div>
 <div class="metric"><div class="label">3D診断方位</div><div id="record3dHeading" class="value">--</div></div><div class="metric"><div class="label">beta生値 / 360化</div><div id="recordBetaElevation" class="value">--</div></div>
@@ -262,10 +262,13 @@
 const $=id=>document.getElementById(id);
 const finite=Number.isFinite, rad=Math.PI/180, norm=v=>(v%360+360)%360;
 const STORE="solarwatch_sensor_v9_3d_records", FORM="solarwatch_sensor_v9_3d_form", CAL="solarwatch_sensor_v9_3d_calibration", HCAL="solarwatch_sensor_v9_3d_heading_calibration", HCFG="solarwatch_heading_inversion_test";
-const IOS_HEADING_FLIP_THRESHOLD_DEG=135;
+const IOS_HEADING_JUMP_MIN_DEG=150;
+const IOS_HEADING_JUMP_ELEVATION_MIN=120;
+const IOS_HEADING_JUMP_ELEVATION_MAX=150;
 const ua=navigator.userAgent;
 const os=/iPhone|iPad|iPod/.test(ua)?"iPhone / iPad":/Android/.test(ua)?"Android":"その他";
-let sensorOK=false, stream=null, watchId=null, recording=false, all=[], session=[], currentSession="", lastSample=0, recordSampleTimer=null, currentMode="free"; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true;
+let sensorOK=false, stream=null, watchId=null, recording=false, all=[], session=[], currentSession="", lastSample=0, recordSampleTimer=null, currentMode="free";
+let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0}; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true;
 let geo={lat:null,lon:null,alt:null,accuracy:null,altAccuracy:null,timestamp:null};
 let cur={a:null,b:null,g:null,absolute:null,iosHeading:null,iosAccuracy:null,absAlpha:null,heading:null,source:"--",elev:null,camera3d:null,ax:null,ay:null,az:null,gx:null,gy:null,gz:null,ra:null,rb:null,rg:null,motionInterval:null,oriTs:null,motTs:null,magX:null,magY:null,magZ:null,magTs:null,magError:"",magPermission:"unknown",absQuat:null,absOriTs:null,absOriError:"",relQuat:null,relOriTs:null,relOriError:"",prev3dHeading:null,last3dJump:null};
 const scenarios=[
@@ -519,15 +522,28 @@ function primary3d(){
  }
  return {...v,heading};
 }
+function updateIphoneHeadingFlipState(rawHeading){
+ if(!finite(rawHeading))return;
+ const prev=iosHeadingFlipState.prevRaw;
+ const e=primaryElevation();
+ if(finite(prev)&&finite(e)){
+  const jump=cd(rawHeading,prev);
+  const inWindow=e>=IOS_HEADING_JUMP_ELEVATION_MIN&&e<=IOS_HEADING_JUMP_ELEVATION_MAX;
+  if(inWindow&&Math.abs(jump)>=IOS_HEADING_JUMP_MIN_DEG){
+   iosHeadingFlipState.active=!iosHeadingFlipState.active;
+   iosHeadingFlipState.lastJump=jump;
+   iosHeadingFlipState.lastJumpElevation=e;
+   iosHeadingFlipState.toggleCount++;
+  }
+ }
+ iosHeadingFlipState.prevRaw=rawHeading;
+}
 function iphoneHeadingCorrected(){
  if(!finite(cur.iosHeading))return null;
- const e=primaryElevation();
- if(!finite(e))return cur.iosHeading;
- return e>=IOS_HEADING_FLIP_THRESHOLD_DEG?norm(cur.iosHeading+180):cur.iosHeading;
+ return iosHeadingFlipState.active?norm(cur.iosHeading+180):cur.iosHeading;
 }
 function iphoneHeadingCorrectionApplied(){
- const e=primaryElevation();
- return finite(cur.iosHeading)&&finite(e)&&e>=IOS_HEADING_FLIP_THRESHOLD_DEG;
+ return finite(cur.iosHeading)&&iosHeadingFlipState.active;
 }
 function primaryHeading(){
  const ih=iphoneHeadingCorrected();
@@ -536,10 +552,11 @@ function primaryHeading(){
 }
 let started=false;
 function startSensors(){
- if(started)return;started=true;
+ if(started)return;started=true;iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0};
  const ori=e=>{
   cur.a=finite(e.alpha)?e.alpha:null;cur.b=finite(e.beta)?e.beta:null;cur.g=finite(e.gamma)?e.gamma:null;cur.absolute=e.absolute===true;cur.oriTs=e.timeStamp;
   cur.iosHeading=finite(e.webkitCompassHeading)?norm(e.webkitCompassHeading):null;cur.iosAccuracy=finite(e.webkitCompassAccuracy)?e.webkitCompassAccuracy:null;
+  if(finite(cur.iosHeading))updateIphoneHeadingFlipState(cur.iosHeading);
   if(e.type==="deviceorientationabsolute"&&finite(e.alpha))cur.absAlpha=e.alpha;
   const ang=screenDeg();
   let rawHeading=null;if(finite(cur.iosHeading)){rawHeading=norm(cur.iosHeading+ang);cur.source="iPhoneコンパス"}
@@ -643,7 +660,7 @@ function render(){
  txt("gravity",[cur.gx,cur.gy,cur.gz].map(v=>fmt(v,2)).join(" / ")+" m/s²");
  txt("accel",[cur.ax,cur.ay,cur.az].map(v=>fmt(v,2)).join(" / ")+" m/s²");
  txt("rotation",[cur.ra,cur.rb,cur.rg].map(v=>fmt(v,2)).join(" / ")+" °/s");
- txt("headingSource",finite(cur.iosHeading)?"iPhoneコンパス + 高度135°反転補正（試験）":cur.source);txt("compassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");
+ txt("headingSource",finite(cur.iosHeading)?"iPhoneコンパス + 180°ジャンプ検知補正（試験）":cur.source);txt("compassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");
  txt("alphaRawDisplay",finite(cur.a)?cur.a.toFixed(1)+"°":"--");
  txt("alphaDirectDisplay",finite(cur.a)?norm(cur.a+screenDeg()).toFixed(1)+"°":"--");
  txt("alphaInvertedDisplay",finite(cur.a)?norm(360-cur.a+screenDeg()).toFixed(1)+"°":"--");
@@ -655,14 +672,14 @@ function render(){
  txt("iosHeadingVsAlphaDisplay",finite(cur.iosHeading)&&finite(cur.a)?(cd(cur.iosHeading,norm(360-cur.a))>=0?"+":"")+cd(cur.iosHeading,norm(360-cur.a)).toFixed(1)+"°":"--");
  txt("iosElevationDisplay",finite(primaryElevation())?primaryElevation().toFixed(1)+"°":"--");
  txt("iosHeadingCorrectedDisplay",finite(iphoneHeadingCorrected())?iphoneHeadingCorrected().toFixed(1)+"°":"--");
- txt("iosHeadingCorrectionDisplay",finite(cur.iosHeading)?(iphoneHeadingCorrectionApplied()?"適用中（高度≥135°）":"未適用（高度<135°）"):"--");
+ txt("iosHeadingCorrectionDisplay",finite(cur.iosHeading)?(iphoneHeadingCorrectionApplied()?"ON（反転状態）":"OFF（通常状態）"):"--");
  txt("recordLiveElevation",finite(primaryElevation())?primaryElevation().toFixed(1)+"°":"--");
  txt("recordLiveHeading",finite(primaryHeading())?primaryHeading().toFixed(1)+"°":"--");
  txt("recordElevationNearButton",finite(primaryElevation())?primaryElevation().toFixed(1)+"°":"--");
  txt("recordHeadingNearButton",finite(primaryHeading())?primaryHeading().toFixed(1)+"°":"--");
  txt("recordIosHeading",finite(cur.iosHeading)?cur.iosHeading.toFixed(1)+"°":"--");
  txt("recordIosHeadingCorrected",finite(iphoneHeadingCorrected())?iphoneHeadingCorrected().toFixed(1)+"°":"--");
- txt("recordIosCorrectionState",finite(cur.iosHeading)?(iphoneHeadingCorrectionApplied()?"ON":"OFF"):"--");
+ txt("recordIosCorrectionState",finite(cur.iosHeading)?(iphoneHeadingCorrectionApplied()?"ON":"OFF")+" / 切替"+iosHeadingFlipState.toggleCount+"回":"--");
  txt("recordAlpha",finite(cur.a)?cur.a.toFixed(1)+"°":"--");
  txt("recordAlphaInv",finite(cur.a)?norm(360-cur.a).toFixed(1)+"°":"--");
  const rp3=primary3d();txt("record3dHeading",rp3&&finite(rp3.heading)?rp3.heading.toFixed(1)+"°":"--");txt("recordBetaElevation",finite(cur.b)?cur.b.toFixed(1)+"° / "+betaElevation360().toFixed(1)+"°":"--");
@@ -718,10 +735,10 @@ function makeRow(){
   magnetometer_timestamp:cur.magTs,magnetometer_error:cur.magError,magnetometer_permission:cur.magPermission,
   absolute_orientation_quaternion:cur.absQuat?cur.absQuat.join("|"):"",absolute_orientation_timestamp:cur.absOriTs,absolute_orientation_error:cur.absOriError,
   relative_orientation_quaternion:cur.relQuat?cur.relQuat.join("|"):"",relative_orientation_timestamp:cur.relOriTs,relative_orientation_error:cur.relOriError,
-  primary_heading_source:finite(cur.iosHeading)?"ios_webkit_compass_plus_135deg_flip_test":"os_heading_only",primary_elevation_source:"deviceorientation_beta_normalized_360",beta_elevation_360_deg:betaElevation360(),gravity_tilt_elevation_deg:gravityTiltElevation(),gravity_full_tilt_raw_deg:rawFullTiltFromGravity(gravityVector()),gravity_elevation_360_deg:elevation360Value(),iphone_heading_diagnostic_mode:true,
+  primary_heading_source:finite(cur.iosHeading)?"ios_webkit_compass_jump_toggle_correction":"os_heading_only",primary_elevation_source:"deviceorientation_beta_normalized_360",beta_elevation_360_deg:betaElevation360(),gravity_tilt_elevation_deg:gravityTiltElevation(),gravity_full_tilt_raw_deg:rawFullTiltFromGravity(gravityVector()),gravity_elevation_360_deg:elevation360Value(),iphone_heading_diagnostic_mode:true,
   os_vs_3d_heading_delta_deg:(primary3d()&&finite(primary3d().heading)&&finite(cur.rawHeading))?cd(primary3d().heading,cur.rawHeading):null,
   camera3d_step_jump_deg:cur.last3dJump,
-  webkit_compass_heading_deg:cur.iosHeading,webkit_compass_heading_inverted_deg:finite(cur.iosHeading)?norm(360-cur.iosHeading):null,webkit_compass_heading_corrected_135_deg:iphoneHeadingCorrected(),webkit_compass_heading_correction_applied:iphoneHeadingCorrectionApplied(),webkit_compass_heading_flip_threshold_deg:IOS_HEADING_FLIP_THRESHOLD_DEG,webkit_compass_accuracy_deg:cur.iosAccuracy,
+  webkit_compass_heading_deg:cur.iosHeading,webkit_compass_heading_inverted_deg:finite(cur.iosHeading)?norm(360-cur.iosHeading):null,webkit_compass_heading_jump_corrected_deg:iphoneHeadingCorrected(),webkit_compass_heading_correction_applied:iphoneHeadingCorrectionApplied(),webkit_compass_heading_last_jump_deg:iosHeadingFlipState.lastJump,webkit_compass_heading_last_jump_elevation_deg:iosHeadingFlipState.lastJumpElevation,webkit_compass_heading_toggle_count:iosHeadingFlipState.toggleCount,webkit_compass_heading_jump_min_deg:IOS_HEADING_JUMP_MIN_DEG,webkit_compass_heading_jump_elevation_min_deg:IOS_HEADING_JUMP_ELEVATION_MIN,webkit_compass_heading_jump_elevation_max_deg:IOS_HEADING_JUMP_ELEVATION_MAX,webkit_compass_accuracy_deg:cur.iosAccuracy,
   ios_alpha_raw_deg:cur.a,ios_alpha_inverted_deg:finite(cur.a)?norm(360-cur.a):null,
   ios_compass_vs_inverted_alpha_delta_deg:(finite(cur.iosHeading)&&finite(cur.a))?cd(cur.iosHeading,norm(360-cur.a)):null,
   ios_beta_deg:cur.b,ios_gamma_deg:cur.g,ios_primary_elevation_deg:primaryElevation(),
