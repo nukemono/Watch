@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>太陽ウォッチ センサー検証 v14-heading-inversion-test</title>
+<title>太陽ウォッチ センサー検証 v15-iphone-heading-diagnostics</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f6f7f8;color:#222;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:920px;margin:auto;padding:14px}.card{background:#fff;border:1px solid #ddd;border-radius:14px;padding:14px;margin-bottom:14px}h1{font-size:1.3rem;margin:0 0 6px}h2{font-size:1rem;margin:0 0 10px}.muted,.mini{color:#666;font-size:.82rem}.grid,.row,.actions,.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.metric{background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:9px;min-width:0}.label{font-size:.72rem;color:#666}.value{font-family:ui-monospace,monospace;font-weight:700;font-size:1rem;word-break:break-word}.big{font-size:1.45rem}.status{padding:10px;border-radius:10px;background:#fff7dd;border:1px solid #ead274;font-size:.86rem;margin:10px 0}.ok{background:#eaf8ef;border-color:#93d3ab}.warn{background:#fff7dd;border-color:#ead274}.bad{background:#fff0f0;border-color:#e0aaaa}.info{background:#edf4ff;border-color:#abc5ef}.pill{display:inline-block;border-radius:999px;padding:5px 9px;font-size:.78rem;font-weight:700}.pill.ok{background:#dff3e7}.pill.warn{background:#fff0b8}.pill.bad{background:#ffdada}button{width:100%;border:0;border-radius:10px;padding:12px 9px;font-size:16px;font-weight:700;cursor:pointer;background:#eef1f4;color:#222}.primary{background:#087f5b;color:#fff}.danger{background:#b83232;color:#fff}.tab.active{background:#222;color:#fff}button:disabled{opacity:.45;cursor:not-allowed}label{display:block;font-size:.82rem;font-weight:700;margin:8px 0 4px}input,select,textarea{width:100%;padding:10px;border:1px solid #bbb;border-radius:8px;font-size:16px;background:#fff}textarea{min-height:80px}.hidden{display:none}.back{display:inline-block;margin-bottom:12px;color:#087f5b;text-decoration:none;font-weight:700}#cameraBox{position:relative;background:#111;border-radius:12px;overflow:hidden;aspect-ratio:4/3;margin-top:10px}video{width:100%;height:100%;object-fit:cover}.reticle{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:88px;height:88px;border:3px dashed #ffd54a;border-radius:50%;pointer-events:none}.csvbox{font-family:ui-monospace,monospace;font-size:12px;white-space:pre;overflow:auto;max-height:300px;background:#111;color:#eee;padding:10px;border-radius:10px}.score{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #ddd;border-radius:10px;padding:10px;margin:7px 0}.modepanel{display:none}.modepanel.active{display:block}.wrap{display:flex;flex-direction:column}.measure-focus{border:2px solid #087f5b}.measure-values{grid-template-columns:repeat(3,1fr)}.section-note{font-size:.76rem;color:#666;margin-top:6px}.detail-card{background:#fbfbfb}@media(max-width:620px){.grid,.row,.actions,.tabs,.measure-values{grid-template-columns:1fr 1fr}.measure-focus #record{position:sticky;bottom:10px;z-index:5;box-shadow:0 4px 16px rgba(0,0,0,.18)}}
 </style>
@@ -13,7 +13,7 @@
 <a class="back" href="index.html">← プロトタイプ選択へ</a>
 
 <div class="card">
-<h1>📡 センサー検証プロトタイプ v14-heading-inversion-test</h1>
+<h1>📡 センサー検証プロトタイプ v15-iphone-heading-diagnostics</h1>
 <div class="muted">センサー値を集めながら、その場で妥当性を確認する検証版です。地磁気・OS方位・端末姿勢を分離して検証する版です。主方位はOS側の方位値、3D方位は診断用です。高度角は重力ベクトルから直接求め、端末を水平に置いた状態を0°として表示します。</div>
 </div>
 
@@ -100,6 +100,20 @@
 <div class="metric"><div class="label">360 - alpha 方位</div><div id="alphaInvertedDisplay" class="value">--</div></div>
 <div class="metric"><div class="label">現在採用中</div><div id="alphaModeDisplay" class="value">--</div></div>
 </div>
+</div>
+
+<div class="card">
+<h2>5.36 iPhone方位反転の切り分け</h2>
+<div class="status info">iPhoneでは webkitCompassHeading をOSコンパスの生値として扱い、alpha系の値と同時比較します。補正はせず、どの値が180°反転するかを確認します。</div>
+<div class="grid">
+<div class="metric"><div class="label">webkitCompassHeading 生値</div><div id="iosHeadingRawDisplay" class="value big">--</div></div>
+<div class="metric"><div class="label">360 - webkitCompassHeading</div><div id="iosHeadingInvertedDisplay" class="value">--</div></div>
+<div class="metric"><div class="label">alpha 生値</div><div id="iosAlphaRawDisplay" class="value">--</div></div>
+<div class="metric"><div class="label">360 - alpha</div><div id="iosAlphaInvertedDisplay" class="value">--</div></div>
+<div class="metric"><div class="label">webkitCompassHeading と 360-alpha の差</div><div id="iosHeadingVsAlphaDisplay" class="value">--</div></div>
+<div class="metric"><div class="label">現在の高度角</div><div id="iosElevationDisplay" class="value">--</div></div>
+</div>
+<div class="mini">検証では北を向いたまま高度だけをゆっくり上げ、webkitCompassHeading / alpha / beta / gamma / 高度角を同時記録します。</div>
 </div>
 
 <div class="card">
@@ -511,6 +525,12 @@ function render(){
  txt("alphaDirectDisplay",finite(cur.a)?norm(cur.a+screenDeg()).toFixed(1)+"°":"--");
  txt("alphaInvertedDisplay",finite(cur.a)?norm(360-cur.a+screenDeg()).toFixed(1)+"°":"--");
  txt("alphaModeDisplay",finite(cur.iosHeading)?"iPhone: webkitCompassHeading":(disableAlphaInversion?"反転無効: alpha":"標準: 360-alpha"));
+ txt("iosHeadingRawDisplay",finite(cur.iosHeading)?cur.iosHeading.toFixed(1)+"°":"--");
+ txt("iosHeadingInvertedDisplay",finite(cur.iosHeading)?norm(360-cur.iosHeading).toFixed(1)+"°":"--");
+ txt("iosAlphaRawDisplay",finite(cur.a)?cur.a.toFixed(1)+"°":"--");
+ txt("iosAlphaInvertedDisplay",finite(cur.a)?norm(360-cur.a).toFixed(1)+"°":"--");
+ txt("iosHeadingVsAlphaDisplay",finite(cur.iosHeading)&&finite(cur.a)?(cd(cur.iosHeading,norm(360-cur.a))>=0?"+":"")+cd(cur.iosHeading,norm(360-cur.a)).toFixed(1)+"°":"--");
+ txt("iosElevationDisplay",finite(primaryElevation())?primaryElevation().toFixed(1)+"°":"--");
  txt("quickSensorState",sensorOK?"取得中":"未開始");
  txt("quickCompassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");
  const ce=calibratedElevationValue();txt("calibratedElevation",finite(ce)?ce.toFixed(1)+"°":"--");renderMagnetometer();
@@ -563,10 +583,14 @@ function makeRow(){
   magnetometer_timestamp:cur.magTs,magnetometer_error:cur.magError,magnetometer_permission:cur.magPermission,
   absolute_orientation_quaternion:cur.absQuat?cur.absQuat.join("|"):"",absolute_orientation_timestamp:cur.absOriTs,absolute_orientation_error:cur.absOriError,
   relative_orientation_quaternion:cur.relQuat?cur.relQuat.join("|"):"",relative_orientation_timestamp:cur.relOriTs,relative_orientation_error:cur.relOriError,
-  primary_heading_source:"os_heading_only",primary_elevation_source:"gravity_vector_tilt_horizontal_zero",gravity_tilt_elevation_deg:gravityTiltElevation(),
+  primary_heading_source:"os_heading_only",primary_elevation_source:"gravity_vector_tilt_horizontal_zero",gravity_tilt_elevation_deg:gravityTiltElevation(),iphone_heading_diagnostic_mode:true,
   os_vs_3d_heading_delta_deg:(primary3d()&&finite(primary3d().heading)&&finite(cur.rawHeading))?cd(primary3d().heading,cur.rawHeading):null,
   camera3d_step_jump_deg:cur.last3dJump,
-  webkit_compass_heading_deg:cur.iosHeading,webkit_compass_accuracy_deg:cur.iosAccuracy,legacy_elevation_candidate_deg:cur.elev,gravity_calibrated_elevation_deg:calibratedElevationValue(),calibrated_elevation_deg:primaryElevation(),calibration_horizontal_gravity:calibration.horizontal?calibration.horizontal.join("|"):"",calibration_zenith_gravity:calibration.zenith?calibration.zenith.join("|"):"",
+  webkit_compass_heading_deg:cur.iosHeading,webkit_compass_heading_inverted_deg:finite(cur.iosHeading)?norm(360-cur.iosHeading):null,webkit_compass_accuracy_deg:cur.iosAccuracy,
+  ios_alpha_raw_deg:cur.a,ios_alpha_inverted_deg:finite(cur.a)?norm(360-cur.a):null,
+  ios_compass_vs_inverted_alpha_delta_deg:(finite(cur.iosHeading)&&finite(cur.a))?cd(cur.iosHeading,norm(360-cur.a)):null,
+  ios_beta_deg:cur.b,ios_gamma_deg:cur.g,ios_primary_elevation_deg:primaryElevation(),
+  legacy_elevation_candidate_deg:cur.elev,gravity_calibrated_elevation_deg:calibratedElevationValue(),calibrated_elevation_deg:primaryElevation(),calibration_horizontal_gravity:calibration.horizontal?calibration.horizontal.join("|"):"",calibration_zenith_gravity:calibration.zenith?calibration.zenith.join("|"):"",
   acceleration_x_mps2:cur.ax,acceleration_y_mps2:cur.ay,acceleration_z_mps2:cur.az,gravity_accel_x_mps2:cur.gx,gravity_accel_y_mps2:cur.gy,gravity_accel_z_mps2:cur.gz,
   rotation_alpha_dps:cur.ra,rotation_beta_dps:cur.rb,rotation_gamma_dps:cur.rg,motion_interval_ms:cur.motionInterval,orientation_event_timestamp_ms:cur.oriTs,motion_event_timestamp_ms:cur.motTs,
   reference_heading_deg:currentMode==="reference"?th:null,reference_elevation_deg:currentMode==="reference"?te:null,
