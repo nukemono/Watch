@@ -15,7 +15,7 @@
 
 <div class="card">
 <h1>📡 センサー検証プロトタイプ v18-elevation-direct-360</h1>
-<div class="muted">センサー値を集めながら、その場で妥当性を確認する検証版です。地磁気・OS方位・端末姿勢を分離して検証する版です。主方位はOS側の方位値、3D方位は診断用です。高度角は重力ベクトルから直接0〜359°で表示します。iPhone画面が上向き水平=0°、画面が手前を向く直角=90°、画面下向き水平=180°、画面が反対側を向く直角=270°、一周で360°→0°です。表示に真上90°校正は不要です。</div>
+<div class="muted">センサー値を集めながら、その場で妥当性を確認する検証版です。地磁気・OS方位・端末姿勢を分離して検証する版です。主方位はOS側の方位値、3D方位は診断用です。高度角は液晶面の向きを基準に重力ベクトルから直接0〜359°で表示します。液晶が上向き水平=0°、液晶が手前を向く直角=90°、液晶が下向き水平=180°、液晶が反対側を向く直角=270°、一周で360°→0°です。</div>
 </div>
 
 <div class="card">
@@ -527,9 +527,9 @@ function rawFullTiltFromGravity(v){
  if(!v)return null;
  const sy=screenGravityY(v),gz=v[2];
  if(!finite(sy)||!finite(gz))return null;
- // 水平(face up)=0、画面上端を起こす=90、face down=180、
- // さらに回して逆向き鉛直=270、1周で360→0。
- return norm(Math.atan2(-sy,gz)/rad);
+ // 「画面」は液晶面。液晶が上向き水平=0°、液晶が手前向き直角=90°、
+ // 液晶が下向き水平=180°、液晶が反対向き直角=270°、1周で360→0°。
+ return norm(Math.atan2(sy,gz)/rad);
 }
 function elevation360Value(){
  const g=gravityVector();
