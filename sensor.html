@@ -211,7 +211,7 @@
 </div>
 
 <div class="card measure-console" id="cardRecord">
-<h2>6. 10秒測定</h2><div class="mini">UI版: live-readout-v2</div>
+<h2>6. 10秒測定</h2><div class="mini">UI版: record-sampling-v3</div>
 <div class="status info">測定中はここだけ見れば高度角と方位の変化を追えます。北向きを保ったまま、高度角をゆっくり上げてください。</div>
 <div class="measure-live-grid">
 <div class="metric live-main"><div class="label">高度角（水平0°）</div><div id="recordLiveElevation" class="value live-number">--</div></div>
@@ -264,7 +264,7 @@ const finite=Number.isFinite, rad=Math.PI/180, norm=v=>(v%360+360)%360;
 const STORE="solarwatch_sensor_v9_3d_records", FORM="solarwatch_sensor_v9_3d_form", CAL="solarwatch_sensor_v9_3d_calibration", HCAL="solarwatch_sensor_v9_3d_heading_calibration", HCFG="solarwatch_heading_inversion_test";
 const ua=navigator.userAgent;
 const os=/iPhone|iPad|iPod/.test(ua)?"iPhone / iPad":/Android/.test(ua)?"Android":"その他";
-let sensorOK=false, stream=null, watchId=null, recording=false, all=[], session=[], currentSession="", lastSample=0, currentMode="free"; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true;
+let sensorOK=false, stream=null, watchId=null, recording=false, all=[], session=[], currentSession="", lastSample=0, recordSampleTimer=null, currentMode="free"; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true;
 let geo={lat:null,lon:null,alt:null,accuracy:null,altAccuracy:null,timestamp:null};
 let cur={a:null,b:null,g:null,absolute:null,iosHeading:null,iosAccuracy:null,absAlpha:null,heading:null,source:"--",elev:null,camera3d:null,ax:null,ay:null,az:null,gx:null,gy:null,gz:null,ra:null,rb:null,rg:null,motionInterval:null,oriTs:null,motTs:null,magX:null,magY:null,magZ:null,magTs:null,magError:"",magPermission:"unknown",absQuat:null,absOriTs:null,absOriError:"",relQuat:null,relOriTs:null,relOriError:"",prev3dHeading:null,last3dJump:null};
 const scenarios=[
@@ -716,7 +716,14 @@ function makeRow(){
   horizon_dip_deg:dip,screen_orientation_angle_deg:screenDeg(),device_pixel_ratio:devicePixelRatio,screen_width:screen.width,screen_height:screen.height
  }
 }
-function sample(){if(!recording)return;const n=performance.now();if(n-lastSample<20)return;lastSample=n;session.push({...makeRow(),perf_ms:n});if(session.length%20===0)persist()}
+function sample(force=false){
+ if(!recording)return;
+ const n=performance.now();
+ if(!force&&n-lastSample<20)return;
+ lastSample=n;
+ session.push({...makeRow(),perf_ms:n});
+ if(session.length%20===0)saveRecordState().catch(storageError);
+}
 
 function mean(a){a=a.filter(finite);return a.length?a.reduce((s,v)=>s+v,0)/a.length:null}
 function sd(a){a=a.filter(finite);if(a.length<2)return null;const m=mean(a);return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/(a.length-1))}
@@ -740,9 +747,9 @@ function diagnose(rows){
 function startRecord(){
  if(!sensorOK)return alert("先に利用開始してください");
  if(recording)return;
- session=[];recording=true;$("cardRecord").classList.add("recording-active");lastSample=0;currentSession=($("deviceId").value||"device")+"_"+new Date().toISOString().replace(/[:.]/g,"-");
+ session=[];recording=true;$("cardRecord").classList.add("recording-active");lastSample=0;if(recordSampleTimer)clearInterval(recordSampleTimer);recordSampleTimer=setInterval(()=>sample(true),50);sample(true);currentSession=($("deviceId").value||"device")+"_"+new Date().toISOString().replace(/[:.]/g,"-");
  let s=10;txt("recordStatus","記録中…10秒");txt("recordMotionGuide","測定中：高度角を見ながら一定速度でゆっくり傾けてください。");
- const t=setInterval(()=>{s--;txt("recordStatus","記録中…"+s+"秒");txt("recordMotionGuide","測定中：残り"+s+"秒 / 高度 "+(finite(primaryElevation())?primaryElevation().toFixed(1)+"°":"--")+" / 方位 "+(finite(primaryHeading())?primaryHeading().toFixed(1)+"°":"--"));if(s<=0){clearInterval(t);recording=false;$("cardRecord").classList.remove("recording-active");all.push(...session);txt("count",session.length);diagnose(session);session=[];txt("recordStatus","保存中…");$("recordStatus").className="status";saveRecordState().then(()=>{txt("savedCount",all.length);txt("recordStatus","完了：端末内に合計 "+all.length+" 件保存");$("recordStatus").className="status ok"}).catch(storageError);txt("recordMotionGuide","測定完了。必要なら同じ動作を2〜3回繰り返してください。")}},1000)
+ const t=setInterval(()=>{s--;txt("recordStatus","記録中…"+s+"秒 / "+session.length+"件");txt("count",session.length);txt("recordMotionGuide","測定中：残り"+s+"秒 / 高度 "+(finite(primaryElevation())?primaryElevation().toFixed(1)+"°":"--")+" / 方位 "+(finite(primaryHeading())?primaryHeading().toFixed(1)+"°":"--"));if(s<=0){clearInterval(t);if(recordSampleTimer){clearInterval(recordSampleTimer);recordSampleTimer=null}sample(true);recording=false;$("cardRecord").classList.remove("recording-active");all.push(...session);txt("count",session.length);diagnose(session);session=[];txt("recordStatus","保存中…");$("recordStatus").className="status";saveRecordState().then(()=>{txt("savedCount",all.length);txt("recordStatus","完了：端末内に合計 "+all.length+" 件保存");$("recordStatus").className="status ok"}).catch(storageError);txt("recordMotionGuide","測定完了。必要なら同じ動作を2〜3回繰り返してください。")}},1000)
 }
 
 function csvText(){const rows=all.concat(session);if(!rows.length)return"";const keys=Array.from(new Set(rows.flatMap(Object.keys))).filter(k=>k!=="perf_ms"),esc=v=>'"'+String(v??"").replaceAll('"','""')+'"';return[keys.join(","),...rows.map(r=>keys.map(k=>esc(r[k])).join(","))].join("\n")}
