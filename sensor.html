@@ -287,8 +287,70 @@ function dir(h){if(!finite(h))return"--";return["北","北東","東","南東","�
 function fmt(v,n=2){return finite(v)?v.toFixed(n):"--"}
 function setPill(id,state,text){const e=$(id);e.className="pill "+state;e.textContent=text}
 function saveForm(){const o={};for(const id of ["deviceId","place","height","condition","notes","targetHeading","targetElevation"])o[id]=$(id).value;o.currentMode=currentMode;o.scenarioIndex=scenarioIndex;localStorage.setItem(FORM,JSON.stringify(o))}
-function persist(){try{localStorage.setItem(STORE,JSON.stringify({all,session,recording,currentSession}));localStorage.setItem(CAL,JSON.stringify(calibration));localStorage.setItem(HCAL,JSON.stringify(headingCalibration));txt("savedCount",all.length+session.length)}catch{}}
-function restore(){try{const s=JSON.parse(localStorage.getItem(STORE)||"null");if(s){all=Array.isArray(s.all)?s.all:[];if(Array.isArray(s.session)&&s.session.length)all.push(...s.session);session=[];recording=false}const f=JSON.parse(localStorage.getItem(FORM)||"null");if(f){for(const id of ["deviceId","place","height","condition","notes","targetHeading","targetElevation"])if(f[id]!=null)$(id).value=f[id];if(f.currentMode)selectMode(f.currentMode);if(Number.isInteger(f.scenarioIndex))scenarioIndex=Math.max(0,Math.min(scenarios.length-1,f.scenarioIndex))}const cal=JSON.parse(localStorage.getItem(CAL)||"null");if(cal)calibration=cal;const hcal=JSON.parse(localStorage.getItem(HCAL)||"null");if(hcal){headingCalibration=hcal;if(!finite(headingCalibration.orientationFrameOffset)){headingCalibration.enabled=false;headingCalibration.orientationFrameOffset=null}}const hcfg=JSON.parse(localStorage.getItem(HCFG)||"null");if(hcfg&&typeof hcfg.disableAlphaInversion==="boolean")disableAlphaInversion=hcfg.disableAlphaInversion;}catch{}txt("savedCount",all.length);renderScenario();updateCalibrationStatus();updateHeadingCalibrationStatus()}
+
+const DATA_DB="solarwatch_sensor_db_v1",DATA_STORE="state",DATA_KEY="records";
+let dbPromise=null;
+function openDataDB(){
+ if(!("indexedDB" in window))return Promise.reject(new Error("IndexedDB非対応"));
+ if(dbPromise)return dbPromise;
+ dbPromise=new Promise((resolve,reject)=>{
+  const req=indexedDB.open(DATA_DB,1);
+  req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(DATA_STORE))db.createObjectStore(DATA_STORE)};
+  req.onsuccess=()=>resolve(req.result);
+  req.onerror=()=>reject(req.error||new Error("IndexedDBを開けません"));
+ });
+ return dbPromise;
+}
+async function saveRecordState(){
+ const db=await openDataDB();
+ const state={all,session,recording,currentSession,savedAt:Date.now()};
+ await new Promise((resolve,reject)=>{
+  const tx=db.transaction(DATA_STORE,"readwrite");
+  tx.objectStore(DATA_STORE).put(state,DATA_KEY);
+  tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error("保存失敗"));tx.onabort=()=>reject(tx.error||new Error("保存中断"));
+ });
+}
+async function loadRecordState(){
+ const db=await openDataDB();
+ return await new Promise((resolve,reject)=>{
+  const tx=db.transaction(DATA_STORE,"readonly"),req=tx.objectStore(DATA_STORE).get(DATA_KEY);
+  req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>reject(req.error||new Error("読込失敗"));
+ });
+}
+async function clearRecordState(){
+ try{const db=await openDataDB();await new Promise((resolve,reject)=>{const tx=db.transaction(DATA_STORE,"readwrite");tx.objectStore(DATA_STORE).delete(DATA_KEY);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}catch{}
+ localStorage.removeItem(STORE);
+}
+function storageError(e){
+ console.error("sensor data storage error",e);
+ txt("recordStatus","端末保存に失敗: "+(e?.name||e?.message||"保存容量/ブラウザ設定を確認"));
+ $("recordStatus").className="status bad";
+}
+function persist(){
+ try{localStorage.setItem(CAL,JSON.stringify(calibration));localStorage.setItem(HCAL,JSON.stringify(headingCalibration))}catch(e){console.warn("settings storage",e)}
+ txt("savedCount",all.length+session.length);
+ saveRecordState().catch(storageError);
+}
+async function restore(){
+ try{
+  const f=JSON.parse(localStorage.getItem(FORM)||"null");if(f){for(const id of ["deviceId","place","height","condition","notes","targetHeading","targetElevation"])if(f[id]!=null)$(id).value=f[id];if(f.currentMode)selectMode(f.currentMode);if(Number.isInteger(f.scenarioIndex))scenarioIndex=Math.max(0,Math.min(scenarios.length-1,f.scenarioIndex))}
+  const cal=JSON.parse(localStorage.getItem(CAL)||"null");if(cal)calibration=cal;
+  const hcal=JSON.parse(localStorage.getItem(HCAL)||"null");if(hcal){headingCalibration=hcal;if(!finite(headingCalibration.orientationFrameOffset)){headingCalibration.enabled=false;headingCalibration.orientationFrameOffset=null}}
+  const hcfg=JSON.parse(localStorage.getItem(HCFG)||"null");if(hcfg&&typeof hcfg.disableAlphaInversion==="boolean")disableAlphaInversion=hcfg.disableAlphaInversion;
+ }catch(e){console.warn("settings restore",e)}
+ let s=null;
+ try{s=await loadRecordState()}catch(e){console.warn("IndexedDB restore",e)}
+ if(!s){
+  try{s=JSON.parse(localStorage.getItem(STORE)||"null")}catch{}
+  if(s){try{const db=await openDataDB();await new Promise((resolve,reject)=>{const tx=db.transaction(DATA_STORE,"readwrite");tx.objectStore(DATA_STORE).put({...s,recording:false,savedAt:Date.now()},DATA_KEY);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});localStorage.removeItem(STORE)}catch{}}
+ }
+ if(s){
+  all=Array.isArray(s.all)?s.all:[];
+  if(Array.isArray(s.session)&&s.session.length)all.push(...s.session);
+ }
+ session=[];recording=false;
+ txt("savedCount",all.length);renderScenario();updateCalibrationStatus();updateHeadingCalibrationStatus();
+}
 
 
 function arrangeLayout(){
@@ -680,7 +742,7 @@ function startRecord(){
  if(recording)return;
  session=[];recording=true;$("cardRecord").classList.add("recording-active");lastSample=0;currentSession=($("deviceId").value||"device")+"_"+new Date().toISOString().replace(/[:.]/g,"-");
  let s=10;txt("recordStatus","記録中…10秒");txt("recordMotionGuide","測定中：高度角を見ながら一定速度でゆっくり傾けてください。");
- const t=setInterval(()=>{s--;txt("recordStatus","記録中…"+s+"秒");txt("recordMotionGuide","測定中：残り"+s+"秒 / 高度 "+(finite(primaryElevation())?primaryElevation().toFixed(1)+"°":"--")+" / 方位 "+(finite(primaryHeading())?primaryHeading().toFixed(1)+"°":"--"));if(s<=0){clearInterval(t);recording=false;$("cardRecord").classList.remove("recording-active");all.push(...session);txt("count",session.length);diagnose(session);session=[];persist();txt("recordStatus","完了：端末内に合計 "+all.length+" 件保存");txt("recordMotionGuide","測定完了。必要なら同じ動作を2〜3回繰り返してください。");$("recordStatus").className="status ok"}},1000)
+ const t=setInterval(()=>{s--;txt("recordStatus","記録中…"+s+"秒");txt("recordMotionGuide","測定中：残り"+s+"秒 / 高度 "+(finite(primaryElevation())?primaryElevation().toFixed(1)+"°":"--")+" / 方位 "+(finite(primaryHeading())?primaryHeading().toFixed(1)+"°":"--"));if(s<=0){clearInterval(t);recording=false;$("cardRecord").classList.remove("recording-active");all.push(...session);txt("count",session.length);diagnose(session);session=[];txt("recordStatus","保存中…");$("recordStatus").className="status";saveRecordState().then(()=>{txt("savedCount",all.length);txt("recordStatus","完了：端末内に合計 "+all.length+" 件保存");$("recordStatus").className="status ok"}).catch(storageError);txt("recordMotionGuide","測定完了。必要なら同じ動作を2〜3回繰り返してください。")}},1000)
 }
 
 function csvText(){const rows=all.concat(session);if(!rows.length)return"";const keys=Array.from(new Set(rows.flatMap(Object.keys))).filter(k=>k!=="perf_ms"),esc=v=>'"'+String(v??"").replaceAll('"','""')+'"';return[keys.join(","),...rows.map(r=>keys.map(k=>esc(r[k])).join(","))].join("\n")}
@@ -692,9 +754,9 @@ function previewCsv(){const t=csvText();if(!t)return alert("データがあり�
 for(const id of ["deviceId","place","height","condition","notes","targetHeading","targetElevation"]){$(id).addEventListener("input",saveForm);$(id).addEventListener("change",saveForm)}
 $("disableAlphaInversion").onchange=()=>{disableAlphaInversion=$("disableAlphaInversion").checked;localStorage.setItem(HCFG,JSON.stringify({disableAlphaInversion}));render()};
 $("startAll").onclick=startAll;$("calNorth").onclick=captureNorthCalibration;$("clearHeadingCal").onclick=clearNorthCalibration;$("calHorizontal").onclick=()=>captureGravity("horizontal");$("calZenith").onclick=()=>captureGravity("zenith");$("record").onclick=startRecord;$("shareCsv").onclick=shareCsv;$("downloadCsv").onclick=downloadCsv;$("previewCsv").onclick=previewCsv;
-$("clear").onclick=()=>{if(!confirm("保存データをすべて削除しますか？"))return;all=[];session=[];localStorage.removeItem(STORE);txt("savedCount","0");txt("count","0");txt("recordStatus","保存データを削除しました");$("csvPreview").classList.add("hidden")};
+$("clear").onclick=()=>{if(!confirm("保存データをすべて削除しますか？"))return;all=[];session=[];clearRecordState();txt("savedCount","0");txt("count","0");txt("recordStatus","保存データを削除しました");$("csvPreview").classList.add("hidden")};
 window.addEventListener("pagehide",persist);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")persist()});
-arrangeLayout();restore();$("disableAlphaInversion").checked=disableAlphaInversion;env();renderScenario();updateHeadingCalibrationStatus();updateCalibrationStatus();updateFocus();
+arrangeLayout();restore().finally(()=>{$("disableAlphaInversion").checked=disableAlphaInversion;renderScenario();updateHeadingCalibrationStatus();updateCalibrationStatus();updateFocus()});env();renderScenario();updateHeadingCalibrationStatus();updateCalibrationStatus();updateFocus();
 })();
 </script>
 </body>
