@@ -51,7 +51,8 @@
 <div class="card">
 <h2>4. あなたが入力する項目</h2>
 <div class="row">
-<div><label>この端末の名前</label><input id="deviceId" value="端末1" placeholder="例：iPhone12、Android-A"></div>
+<div><label>この端末の名前</label><input id="deviceId" value="端末1" placeholder="例：iPhone_A、Android_A"></div>
+<div><label>測定条件ID</label><input id="testConditionId" value="A1" placeholder="例：A1、北_水平_01"></div>
 <div><label>測定場所</label><select id="place"><option>地上</option><option>屋上</option><option>ベランダ</option><option>屋内</option><option>その他</option></select></div>
 <div><label>地面からスマホまでのおおよその高さ（m）</label><input id="height" type="number" step="0.1" value="1.5"></div>
 <div><label>持ち方</label><select id="condition"><option>スマホを固定</option><option>手で持って静止</option><option>太陽に照準</option><option>その他</option></select></div>
@@ -292,7 +293,7 @@ function cd(a,b){return ((a-b+540)%360)-180}
 function dir(h){if(!finite(h))return"--";return["北","北東","東","南東","南","南西","西","北西"][Math.round(norm(h)/45)%8]}
 function fmt(v,n=2){return finite(v)?v.toFixed(n):"--"}
 function setPill(id,state,text){const e=$(id);e.className="pill "+state;e.textContent=text}
-function saveForm(){const o={};for(const id of ["deviceId","place","height","condition","notes","targetHeading","targetElevation"])o[id]=$(id).value;o.currentMode=currentMode;o.scenarioIndex=scenarioIndex;localStorage.setItem(FORM,JSON.stringify(o))}
+function saveForm(){const o={};for(const id of ["deviceId","testConditionId","place","height","condition","notes","targetHeading","targetElevation"])o[id]=$(id).value;o.currentMode=currentMode;o.scenarioIndex=scenarioIndex;localStorage.setItem(FORM,JSON.stringify(o))}
 
 const DATA_DB="solarwatch_sensor_db_v1",DATA_STORE="state",DATA_KEY="records";
 let dbPromise=null;
@@ -339,7 +340,7 @@ function persist(){
 }
 async function restore(){
  try{
-  const f=JSON.parse(localStorage.getItem(FORM)||"null");if(f){for(const id of ["deviceId","place","height","condition","notes","targetHeading","targetElevation"])if(f[id]!=null)$(id).value=f[id];if(f.currentMode)selectMode(f.currentMode);if(Number.isInteger(f.scenarioIndex))scenarioIndex=Math.max(0,Math.min(scenarios.length-1,f.scenarioIndex))}
+  const f=JSON.parse(localStorage.getItem(FORM)||"null");if(f){for(const id of ["deviceId","testConditionId","place","height","condition","notes","targetHeading","targetElevation"])if(f[id]!=null)$(id).value=f[id];if(f.currentMode)selectMode(f.currentMode);if(Number.isInteger(f.scenarioIndex))scenarioIndex=Math.max(0,Math.min(scenarios.length-1,f.scenarioIndex))}
   const cal=JSON.parse(localStorage.getItem(CAL)||"null");if(cal)calibration=cal;
   const hcal=JSON.parse(localStorage.getItem(HCAL)||"null");if(hcal){headingCalibration=hcal;if(!finite(headingCalibration.orientationFrameOffset)){headingCalibration.enabled=false;headingCalibration.orientationFrameOffset=null}}
   const hcfg=JSON.parse(localStorage.getItem(HCFG)||"null");if(hcfg&&typeof hcfg.disableAlphaInversion==="boolean")disableAlphaInversion=hcfg.disableAlphaInversion;
@@ -745,7 +746,7 @@ function makeRow(){
  const now=new Date(),h=parseFloat($("height").value)||0,R=6371000,dip=Math.sqrt(2*Math.max(0,h)/R)/rad;
  const s=scenarios[scenarioIndex],th=parseFloat($("targetHeading").value),te=parseFloat($("targetElevation").value);
  return{
-  session_id:currentSession,local_time:local(now),iso_time:now.toISOString(),epoch_ms:now.getTime(),validation_mode:currentMode,
+  session_id:currentSession,measurement_condition_id:$("testConditionId").value.trim(),local_time:local(now),iso_time:now.toISOString(),epoch_ms:now.getTime(),validation_mode:currentMode,
   device_name:$("deviceId").value,os_detected:os,user_agent:ua,place_type:$("place").value,phone_height_from_ground_m:h,measurement_condition:$("condition").value,notes:$("notes").value,
   latitude:geo.lat,longitude:geo.lon,gps_altitude_m:geo.alt,gps_horizontal_accuracy_m:geo.accuracy,gps_altitude_accuracy_m:geo.altAccuracy,gps_timestamp_ms:geo.timestamp,
   raw_heading_deg:cur.rawHeading,legacy_corrected_heading_deg:cur.heading,north_zero_heading_deg:primaryHeading(),heading_calibration_enabled:headingCalibration.enabled,heading_calibration_offset_deg:headingCalibration.offset,orientation_frame_offset_deg:headingCalibration.orientationFrameOffset,orientation_top_heading_from_alpha_deg:orientationTopHeadingFromAlpha(),heading_raw_at_north_deg:headingCalibration.rawAtNorth,heading_source:cur.source,alpha_inversion_disabled:disableAlphaInversion,alpha_direct_heading_deg:finite(cur.a)?norm(cur.a+screenDeg()):null,alpha_inverted_heading_deg:finite(cur.a)?norm(360-cur.a+screenDeg()):null,orientation_alpha_deg:cur.a,orientation_beta_deg:cur.b,orientation_gamma_deg:cur.g,orientation_absolute:cur.absolute,absolute_event_alpha_deg:cur.absAlpha,screen_orientation_angle_deg_live:screenDeg(),camera3d_east:cur.camera3d?cur.camera3d.east:null,camera3d_north:cur.camera3d?cur.camera3d.north:null,camera3d_up:cur.camera3d?cur.camera3d.up:null,
@@ -801,7 +802,7 @@ function diagnose(rows){
 function startRecord(){
  if(!sensorOK)return alert("先に利用開始してください");
  if(recording)return;
- session=[];recording=true;$("cardRecord").classList.add("recording-active");lastSample=0;if(recordSampleTimer)clearInterval(recordSampleTimer);recordSampleTimer=setInterval(()=>sample(true),50);sample(true);currentSession=($("deviceId").value||"device")+"_"+new Date().toISOString().replace(/[:.]/g,"-");
+ session=[];recording=true;$("cardRecord").classList.add("recording-active");lastSample=0;if(recordSampleTimer)clearInterval(recordSampleTimer);recordSampleTimer=setInterval(()=>sample(true),50);sample(true);currentSession=($("deviceId").value||"device")+"_"+($("testConditionId").value.trim()||"no-condition")+"_"+new Date().toISOString().replace(/[:.]/g,"-");
  let s=10;txt("recordStatus","記録中…10秒");txt("recordMotionGuide","測定中：高度角を見ながら一定速度でゆっくり傾けてください。");
  const t=setInterval(()=>{s--;txt("recordStatus","記録中…"+s+"秒 / "+session.length+"件");txt("count",session.length);txt("recordMotionGuide","測定中：残り"+s+"秒 / 高度 "+(finite(primaryElevation())?primaryElevation().toFixed(1)+"°":"--")+" / 方位 "+(finite(primaryHeading())?primaryHeading().toFixed(1)+"°":"--"));if(s<=0){clearInterval(t);if(recordSampleTimer){clearInterval(recordSampleTimer);recordSampleTimer=null}sample(true);recording=false;$("cardRecord").classList.remove("recording-active");all.push(...session);txt("count",session.length);diagnose(session);session=[];txt("recordStatus","保存中…");$("recordStatus").className="status";saveRecordState().then(()=>{txt("savedCount",all.length);txt("recordStatus","完了：端末内に合計 "+all.length+" 件保存");$("recordStatus").className="status ok"}).catch(storageError);txt("recordMotionGuide","測定完了。必要なら同じ動作を2〜3回繰り返してください。")}},1000)
 }
