@@ -206,9 +206,9 @@
 <div class="metric"><div class="label">実際の端末時刻</div><div id="actualTime" class="value big">--</div></div>
 <div class="metric"><div class="label">太陽位置からの仮推定時刻</div><div id="estimatedTime" class="value big">--</div></div>
 <div class="metric"><div class="label">実時刻との差</div><div id="timeError" class="value big">--</div></div>
-<div class="metric"><div class="label">判定</div><div id="timeVerdict" class="value">--</div></div>
+<div class="metric"><div class="label">判定</div><div id="timeVerdict" class="value">--</div></div><div class="metric"><div class="label">時角の正負</div><div id="hourAngleSign" class="value">--</div></div><div class="metric"><div class="label">午前 / 午後</div><div id="amPm判定" class="value">--</div></div>
 </div>
-<div class="mini">GPS緯度・経度、現在日付、実測高度角、実測方位角を使った簡易推定です。卒制本体の最終アルゴリズムとは別物です。</div>
+<div class="mini">GPS緯度・経度、現在日付、実測高度角、実測方位角から時角Hを計算します。太陽が南中線より東側ならH&lt;0（午前）、西側ならH&gt;0（午後）として自動判定し、H=0°付近は南中として扱います。日本向けの検証用アルゴリズムです。</div>
 </div>
 
 <div class="card measure-console" id="cardRecord">
@@ -724,24 +724,51 @@ $("nextScenario").onclick=()=>{scenarioIndex=(scenarioIndex+1)%scenarios.length;
 
 function dayOfYear(d){const s=new Date(d.getFullYear(),0,0);return Math.floor((d-s)/86400000)}
 function solarDeclinationAndEot(d){const n=dayOfYear(d),B=2*Math.PI*(n-81)/364;return{dec:23.45*Math.sin(2*Math.PI*(284+n)/365)*rad,eot:9.87*Math.sin(2*B)-7.53*Math.cos(B)-1.5*Math.sin(B)}}
+function solarHourAngleFromPosition(altitudeRad, latitudeRad, declinationRad, azimuthDeg){
+ // 方位角は「北=0°, 東=90°, 南=180°, 西=270°」を前提。
+ // 高度角から |H| を求め、太陽が南中線の東側/西側にあるかを
+ // 方位角から判定して、時角 H の正負まで自動決定する。
+ const cosLat=Math.cos(latitudeRad), cosDec=Math.cos(declinationRad);
+ if(Math.abs(cosLat*cosDec)<1e-10) return null;
+ const cosH=(Math.sin(altitudeRad)-Math.sin(latitudeRad)*Math.sin(declinationRad))/(cosLat*cosDec);
+ if(cosH < -1.000001 || cosH > 1.000001) return null;
+ const c=Math.max(-1,Math.min(1,cosH));
+ const az=norm(azimuthDeg)*rad;
+ // 標準方位角から sin(H) を復元。
+ // 東側では H<0（午前）、西側では H>0（午後）。
+ const sinH=-Math.sin(az)*Math.cos(altitudeRad)/cosDec;
+ let H=Math.atan2(sinH,c);
+ // atan2の微小な丸め誤差で南中付近だけ符号が揺れないようにする。
+ if(Math.abs(H)<0.5*rad) H=0;
+ return {deg:H/rad, cosH:c, sinH, side:Math.abs(H)<0.5*rad?'南中付近':(H<0?'太陽は東側':'太陽は西側'), period:Math.abs(H)<0.5*rad?'南中':(H<0?'午前':'午後')};
+}
+
 function updateSolarEstimate(){
- const ce=primaryElevation(); if(!finite(geo.lat)||!finite(geo.lon)||!finite(ce)){txt("estimatedTime","位置/高度角校正待ち");txt("estimatedTimeInline","待機");txt("timeError","--");txt("timeErrorInline","--");txt("timeVerdict","--");return}
+ const ce=primaryElevation();
+ const ph=primaryHeading();
+ if(!finite(geo.lat)||!finite(geo.lon)||!finite(ce)||!finite(ph)){
+  txt("estimatedTime","位置/高度角/方位角待ち");txt("estimatedTimeInline","待機");txt("timeError","--");txt("timeErrorInline","--");txt("timeVerdict","--");txt("hourAngleSign","--");txt("amPm判定","--");return;
+ }
  const now=new Date(),lat=geo.lat*rad,h=ce*rad,{dec,eot}=solarDeclinationAndEot(now);
- const x=(Math.sin(h)-Math.sin(lat)*Math.sin(dec))/(Math.cos(lat)*Math.cos(dec));
- if(x<-1||x>1){txt("estimatedTime","計算範囲外");txt("estimatedTimeInline","計算範囲外");txt("timeError","--");txt("timeErrorInline","--");txt("timeVerdict","--");return}
- const H=Math.acos(Math.max(-1,Math.min(1,x)))/rad;
- const ph=primaryHeading(); const afternoon=finite(ph)?ph>180:false;
- const solarHours=12+(afternoon?H:-H)/15;
+ const ha=solarHourAngleFromPosition(h,lat,dec,ph);
+ if(!ha){txt("estimatedTime","計算範囲外");txt("estimatedTimeInline","計算範囲外");txt("timeError","--");txt("timeErrorInline","--");txt("timeVerdict","--");txt("hourAngleSign","--");txt("amPm判定","--");return;}
+ const H=ha.deg;
+ const solarHours=12+H/15;
  const jstHours=solarHours-(4*(geo.lon-135)+eot)/60;
- const hh=((Math.floor(jstHours)%24)+24)%24,mm=Math.round((jstHours-Math.floor(jstHours))*60);
+ const hh=((Math.floor(jstHours)%24)+24)%24;
+ const mmRaw=(jstHours-Math.floor(jstHours))*60;
+ const mm=Math.round(mmRaw);
+ const hhDisplay=String((hh+(mm===60?1:0))%24).padStart(2,"0");
+ const est=hhDisplay+":"+String(mm%60).padStart(2,"0");
  const estMin=hh*60+(mm===60?0:mm),actualMin=now.getHours()*60+now.getMinutes(),diff=((estMin-actualMin+720)%1440)-720;
- const est=String((hh+(mm===60?1:0))%24).padStart(2,"0")+":"+String(mm%60).padStart(2,"0");
  const terr=(diff>=0?"+":"")+diff+"分";
  txt("estimatedTime",est);txt("estimatedTimeInline",est);
  txt("timeError",terr);txt("timeErrorInline",terr);
- txt("timeVerdict",Math.abs(diff)<=10?"参考上は近い":Math.abs(diff)<=30?"差あり":"大きな差");
+ txt("hourAngleSign",(H<0?"H < 0°（午前）":H>0?"H > 0°（午後）":"H = 0°（南中）"));
+ txt("amPm判定",ha.period);
+ const sideMsg=H<0?"太陽は南中線より東側 → 時角を負":H>0?"太陽は南中線より西側 → 時角を正":"南中付近 → 時角0°として扱う";
+ txt("timeVerdict",sideMsg+" / "+(Math.abs(diff)<=10?"参考上は近い":Math.abs(diff)<=30?"差あり":"大きな差"));
 }
-
 function makeRow(){
  const now=new Date(),h=parseFloat($("height").value)||0,R=6371000,dip=Math.sqrt(2*Math.max(0,h)/R)/rad;
  const s=scenarios[scenarioIndex],th=parseFloat($("targetHeading").value),te=parseFloat($("targetElevation").value);
