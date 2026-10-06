@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <title>Android 3D方位診断 | 太陽ウォッチ</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f6f7f8; color: #222; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .wrap { max-width: 760px; margin: auto; padding: 14px; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 14px; padding: 14px; margin-bottom: 14px; }
+    h1 { font-size: 1.3rem; margin: 0 0 8px; }
+    h2 { font-size: 1rem; margin: 0 0 10px; }
+    .muted { color: #666; font-size: .84rem; line-height: 1.6; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .metric { border: 1px solid #e5e5e5; background: #fafafa; border-radius: 10px; padding: 10px; min-width: 0; }
+    .label { font-size: .72rem; color: #666; }
+    .value { font-family: ui-monospace, monospace; font-weight: 800; font-size: 1.2rem; margin-top: 3px; word-break: break-word; }
+    .big { font-size: 1.7rem; }
+    .status { padding: 10px; border-radius: 10px; background: #fff7dd; border: 1px solid #ead274; font-size: .86rem; margin: 10px 0; }
+    .ok { background: #eaf8ef; border-color: #93d3ab; }
+    .bad { background: #fff0f0; border-color: #e0aaaa; }
+    button, a.btn { width: 100%; border: 0; border-radius: 10px; padding: 12px 9px; font-size: 16px; font-weight: 700; cursor: pointer; background: #eef1f4; color: #222; text-decoration: none; display: block; text-align: center; margin-top: 8px; }
+    .primary { background: #087f5b; color: #fff; }
+    .log { font-family: ui-monospace, monospace; white-space: pre-wrap; font-size: 12px; max-height: 260px; overflow: auto; background: #111; color: #eee; border-radius: 10px; padding: 10px; }
+    @media (max-width: 600px) { .grid { grid-template-columns: 1fr 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>🤖 Android 3D方位診断</h1>
+      <div class="muted">90°付近で alpha が約180°切り替わる現象を切り分けます。alpha単独の方位と、alpha / beta / gamma を3D回転として扱った2種類の方位を同時表示します。</div>
+      <a class="btn" href="sensor.html">← センサー検証へ戻る</a>
+    </div>
+
+    <div class="card">
+      <button id="start" class="primary">センサー取得を開始</button>
+      <div id="status" class="status">開始待ち</div>
+    </div>
+
+    <div class="card">
+      <h2>Euler角と従来方位</h2>
+      <div class="grid">
+        <div class="metric"><div class="label">alpha</div><div id="alpha" class="value">--</div></div>
+        <div class="metric"><div class="label">beta</div><div id="beta" class="value">--</div></div>
+        <div class="metric"><div class="label">gamma</div><div id="gamma" class="value">--</div></div>
+        <div class="metric"><div class="label">360 - alpha</div><div id="alphaInv" class="value big">--</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>3D姿勢から求めた方位</h2>
+      <div class="grid">
+        <div class="metric">
+          <div class="label">端末上辺の3D方位</div>
+          <div id="topHeading" class="value big">--</div>
+          <div class="muted">端末上辺 (+Ydevice) の水平投影。90°付近では上辺が垂直になるため低信頼になります。</div>
+        </div>
+        <div class="metric">
+          <div class="label">背面カメラ光軸の3D方位</div>
+          <div id="cameraHeading" class="value big">--</div>
+          <div class="muted">背面カメラ (-Zdevice) の水平投影。太陽照準に近い診断値です。</div>
+        </div>
+        <div class="metric"><div class="label">上辺 水平成分</div><div id="topHorizontal" class="value">--</div></div>
+        <div class="metric"><div class="label">カメラ 水平成分</div><div id="cameraHorizontal" class="value">--</div></div>
+      </div>
+      <div id="diagnosis" class="status">データ待ち</div>
+    </div>
+
+    <div class="card">
+      <h2>90°通過ログ</h2>
+      <div class="muted">70°→110°程度を、同じ物理方向を保ちながらゆっくり連続して動かしてください。betaが85〜95°の間だけ自動記録します。</div>
+      <button id="clearLog">ログを消去</button>
+      <div id="log" class="log">--</div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const $ = id => document.getElementById(id);
+      const rad = Math.PI / 180;
+      const finite = Number.isFinite;
+      const norm = v => (v % 360 + 360) % 360;
+      let started = false;
+      let lastLogAt = 0;
+
+      function screenDeg() {
+        return screen.orientation && finite(screen.orientation.angle)
+          ? screen.orientation.angle
+          : (typeof window.orientation === 'number' ? window.orientation : 0);
+      }
+
+      function fmt(v, digits = 1) {
+        return finite(v) ? v.toFixed(digits) + '°' : '--';
+      }
+
+      // W3C DeviceOrientation: R = Rz(alpha) * Rx(beta) * Ry(gamma)
+      // Earth frame is interpreted as East(+X), North(+Y), Up(+Z) for diagnostic comparison.
+      function orientationVectors(alpha, beta, gamma) {
+        if (![alpha, beta, gamma].every(finite)) return null;
+        const a = alpha * rad;
+        const b = beta * rad;
+        const g = gamma * rad;
+        const ca = Math.cos(a), sa = Math.sin(a);
+        const cb = Math.cos(b), sb = Math.sin(b);
+        const cg = Math.cos(g), sg = Math.sin(g);
+
+        // Device top edge: +Ydevice = second column of R.
+        // alpha increases opposite to compass azimuth, so flip East sign for north-clockwise heading.
+        let topEast = sa * cb;
+        let topNorth = ca * cb;
+        let topUp = sb;
+
+        // Rear camera optical axis: -Zdevice = negative third column of R.
+        // Same East-sign convention adjustment as above.
+        let cameraEast = ca * sg + sa * sb * cg;
+        let cameraNorth = -(sa * sg - ca * sb * cg);
+        let cameraUp = -(cb * cg);
+
+        const topLen = Math.hypot(topEast, topNorth, topUp) || 1;
+        topEast /= topLen; topNorth /= topLen; topUp /= topLen;
+        const cameraLen = Math.hypot(cameraEast, cameraNorth, cameraUp) || 1;
+        cameraEast /= cameraLen; cameraNorth /= cameraLen; cameraUp /= cameraLen;
+
+        const topHorizontal = Math.hypot(topEast, topNorth);
+        const cameraHorizontal = Math.hypot(cameraEast, cameraNorth);
+        const topHeading = topHorizontal > 1e-5 ? norm(Math.atan2(topEast, topNorth) / rad + screenDeg()) : null;
+        const cameraHeading = cameraHorizontal > 1e-5 ? norm(Math.atan2(cameraEast, cameraNorth) / rad + screenDeg()) : null;
+
+        return { topHeading, cameraHeading, topHorizontal, cameraHorizontal };
+      }
+
+      function render(e) {
+        const a = finite(e.alpha) ? e.alpha : null;
+        const b = finite(e.beta) ? e.beta : null;
+        const g = finite(e.gamma) ? e.gamma : null;
+        const vectors = orientationVectors(a, b, g);
+        const alphaInv = finite(a) ? norm(360 - a + screenDeg()) : null;
+
+        $('alpha').textContent = fmt(a);
+        $('beta').textContent = fmt(b);
+        $('gamma').textContent = fmt(g);
+        $('alphaInv').textContent = fmt(alphaInv);
+        $('topHeading').textContent = vectors ? fmt(vectors.topHeading) : '--';
+        $('cameraHeading').textContent = vectors ? fmt(vectors.cameraHeading) : '--';
+        $('topHorizontal').textContent = vectors ? vectors.topHorizontal.toFixed(3) : '--';
+        $('cameraHorizontal').textContent = vectors ? vectors.cameraHorizontal.toFixed(3) : '--';
+
+        if (vectors) {
+          if (vectors.topHorizontal < 0.15 && vectors.cameraHorizontal > 0.35) {
+            $('diagnosis').textContent = 'beta≈90°では端末上辺の方位は幾何学的に低信頼です。背面カメラ3D方位を重点的に見てください。';
+            $('diagnosis').className = 'status ok';
+          } else {
+            $('diagnosis').textContent = '従来 360-alpha と2種類の3D方位を比較中';
+            $('diagnosis').className = 'status';
+          }
+        }
+
+        if (finite(b) && Math.abs(Math.abs(b) - 90) <= 5) {
+          const now = performance.now();
+          if (now - lastLogAt >= 120) {
+            lastLogAt = now;
+            const line = [
+              new Date().toLocaleTimeString('ja-JP', { fractionalSecondDigits: 3 }),
+              'a=' + (finite(a) ? a.toFixed(1) : '--'),
+              'b=' + b.toFixed(1),
+              'g=' + (finite(g) ? g.toFixed(1) : '--'),
+              '360-a=' + (finite(alphaInv) ? alphaInv.toFixed(1) : '--'),
+              'top3d=' + (vectors && finite(vectors.topHeading) ? vectors.topHeading.toFixed(1) : '--'),
+              'cam3d=' + (vectors && finite(vectors.cameraHeading) ? vectors.cameraHeading.toFixed(1) : '--'),
+              'camH=' + (vectors ? vectors.cameraHorizontal.toFixed(3) : '--')
+            ].join(' | ');
+            $('log').textContent = ($('log').textContent === '--' ? '' : $('log').textContent + '\n') + line;
+            $('log').scrollTop = $('log').scrollHeight;
+          }
+        }
+      }
+
+      async function start() {
+        try {
+          if (!window.isSecureContext) throw new Error('HTTPSで開いてください');
+          if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            const result = await DeviceOrientationEvent.requestPermission();
+            if (result !== 'granted') throw new Error('方向センサーが許可されませんでした');
+          }
+          if (!started) {
+            window.addEventListener('deviceorientationabsolute', render, true);
+            window.addEventListener('deviceorientation', render, true);
+            started = true;
+          }
+          $('status').textContent = '取得中。端末の向きを固定して70°→110°をゆっくり通過してください。';
+          $('status').className = 'status ok';
+        } catch (error) {
+          $('status').textContent = '開始エラー: ' + error.message;
+          $('status').className = 'status bad';
+        }
+      }
+
+      $('start').onclick = start;
+      $('clearLog').onclick = () => { $('log').textContent = '--'; };
+    })();
+  </script>
+</body>
+</html>
