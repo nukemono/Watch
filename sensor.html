@@ -206,7 +206,10 @@
 <div class="metric"><div class="label">実際の端末時刻</div><div id="actualTime" class="value big">--</div></div>
 <div class="metric"><div class="label">太陽位置からの仮推定時刻</div><div id="estimatedTime" class="value big">--</div></div>
 <div class="metric"><div class="label">実時刻との差</div><div id="timeError" class="value big">--</div></div>
-<div class="metric"><div class="label">判定</div><div id="timeVerdict" class="value">--</div></div><div class="metric"><div class="label">時角の正負</div><div id="hourAngleSign" class="value">--</div></div><div class="metric"><div class="label">午前 / 午後</div><div id="amPm判定" class="value">--</div></div>
+<div class="metric"><div class="label">判定</div><div id="timeVerdict" class="value">--</div></div>
+ <div class="metric"><div class="label">午前 / 午後</div><div id="solarAmPm" class="value">--</div></div>
+ <div class="metric"><div class="label">時角 H</div><div id="solarHourAngle" class="value">--</div></div>
+ <div class="metric"><div class="label">南中前後</div><div id="solarAzimuthSide" class="value">--</div></div><div class="metric"><div class="label">時角の正負</div><div id="hourAngleSign" class="value">--</div></div><div class="metric"><div class="label">午前 / 午後</div><div id="amPm判定" class="value">--</div></div>
 </div>
 <div class="mini">GPS緯度・経度、現在日付、実測高度角、実測方位角から時角Hを計算します。太陽が南中線より東側ならH&lt;0（午前）、西側ならH&gt;0（午後）として自動判定し、H=0°付近は南中として扱います。日本向けの検証用アルゴリズムです。</div>
 </div>
@@ -566,10 +569,71 @@ function iphoneHeadingCorrected(){
 function iphoneHeadingCorrectionApplied(){
  return finite(cur.iosHeading)&&iosHeadingFlipState.active;
 }
+
+/* ===== 方位角・時角判定 安定化 ===== */
+const AZIMUTH_CONFIG={
+  southNoonDeadBandDeg:2.5,
+  minHorizontalComponent:0.08
+};
+function normalizeAzimuth(deg){return norm(deg)}
+function azimuthDifference(a,b){
+  if(!finite(a)||!finite(b))return null;
+  return cd(normalizeAzimuth(a),normalizeAzimuth(b));
+}
+function getPrimaryAzimuth(){
+  if(os==="iPhone / iPad" && finite(cur.iosHeading)){
+    return normalizeAzimuth(cur.iosHeading);
+  }
+  return finite(cur.heading)?normalizeAzimuth(cur.heading):null;
+}
+function solarHourAngleMagnitude(latDeg,elevationDeg,declinationDeg){
+  const lat=latDeg*rad,h=elevationDeg*rad,dec=declinationDeg*rad;
+  const den=Math.cos(lat)*Math.cos(dec);
+  if(Math.abs(den)<1e-9)return null;
+  const x=(Math.sin(h)-Math.sin(lat)*Math.sin(dec))/den;
+  if(x<-1-1e-9||x>1+1e-9)return null;
+  return Math.acos(Math.max(-1,Math.min(1,x)))/rad;
+}
+/*
+ * 北=0°, 東=90°, 南=180°, 西=270°。
+ * H<0: 南中前（午前）、H>0: 南中後（午後）。
+ * sin(H) の符号を太陽方位から求め、|H|を高度から求める。
+ */
+function solarHourAngleSigned(latDeg,elevationDeg,declinationDeg,azimuthDeg){
+  if(![latDeg,elevationDeg,declinationDeg,azimuthDeg].every(finite))return null;
+  const h=elevationDeg*rad,dec=declinationDeg*rad,A=normalizeAzimuth(azimuthDeg)*rad;
+  const mag=solarHourAngleMagnitude(latDeg,elevationDeg,declinationDeg);
+  if(!finite(mag))return null;
+
+  const horizontal=Math.cos(h);
+  if(Math.abs(horizontal)<AZIMUTH_CONFIG.minHorizontalComponent){
+    return {hourAngle:null,magnitude:mag,side:"uncertain",confidence:"low"};
+  }
+
+  const sinH=-(Math.cos(dec)*Math.sin(A))/horizontal;
+  const s=Math.max(-1,Math.min(1,sinH));
+
+  if(Math.abs(s)<0.04){
+    return {hourAngle:0,magnitude:mag,side:"noon",confidence:"medium"};
+  }
+
+  const H=s>0?mag:-mag;
+  return {
+    hourAngle:H,
+    magnitude:mag,
+    side:H<0?"east":"west",
+    confidence:"high"
+  };
+}
+function solarPartOfDayFromHourAngle(H){
+  if(!finite(H))return "判定保留";
+  if(Math.abs(H)<=AZIMUTH_CONFIG.southNoonDeadBandDeg)return "南中付近";
+  return H<0?"午前":"午後";
+}
+
 function primaryHeading(){
- const ih=iphoneHeadingCorrected();
- if(finite(ih))return norm(ih+(headingCalibration.enabled?headingCalibration.offset:0));
- return cur.heading;
+  const az=getPrimaryAzimuth();
+  return finite(az)?az:null;
 }
 let started=false;
 function startSensors(){
@@ -744,30 +808,72 @@ function solarHourAngleFromPosition(altitudeRad, latitudeRad, declinationRad, az
 }
 
 function updateSolarEstimate(){
- const ce=primaryElevation();
- const ph=primaryHeading();
- if(!finite(geo.lat)||!finite(geo.lon)||!finite(ce)||!finite(ph)){
-  txt("estimatedTime","位置/高度角/方位角待ち");txt("estimatedTimeInline","待機");txt("timeError","--");txt("timeErrorInline","--");txt("timeVerdict","--");txt("hourAngleSign","--");txt("amPm判定","--");return;
- }
- const now=new Date(),lat=geo.lat*rad,h=ce*rad,{dec,eot}=solarDeclinationAndEot(now);
- const ha=solarHourAngleFromPosition(h,lat,dec,ph);
- if(!ha){txt("estimatedTime","計算範囲外");txt("estimatedTimeInline","計算範囲外");txt("timeError","--");txt("timeErrorInline","--");txt("timeVerdict","--");txt("hourAngleSign","--");txt("amPm判定","--");return;}
- const H=ha.deg;
- const solarHours=12+H/15;
- const jstHours=solarHours-(4*(geo.lon-135)+eot)/60;
- const hh=((Math.floor(jstHours)%24)+24)%24;
- const mmRaw=(jstHours-Math.floor(jstHours))*60;
- const mm=Math.round(mmRaw);
- const hhDisplay=String((hh+(mm===60?1:0))%24).padStart(2,"0");
- const est=hhDisplay+":"+String(mm%60).padStart(2,"0");
- const estMin=hh*60+(mm===60?0:mm),actualMin=now.getHours()*60+now.getMinutes(),diff=((estMin-actualMin+720)%1440)-720;
- const terr=(diff>=0?"+":"")+diff+"分";
- txt("estimatedTime",est);txt("estimatedTimeInline",est);
- txt("timeError",terr);txt("timeErrorInline",terr);
- txt("hourAngleSign",(H<0?"H < 0°（午前）":H>0?"H > 0°（午後）":"H = 0°（南中）"));
- txt("amPm判定",ha.period);
- const sideMsg=H<0?"太陽は南中線より東側 → 時角を負":H>0?"太陽は南中線より西側 → 時角を正":"南中付近 → 時角0°として扱う";
- txt("timeVerdict",sideMsg+" / "+(Math.abs(diff)<=10?"参考上は近い":Math.abs(diff)<=30?"差あり":"大きな差"));
+  const ce=primaryElevation(),ph=primaryHeading();
+  if(!finite(geo.lat)||!finite(geo.lon)||!finite(ce)||!finite(ph)){
+    txt("estimatedTime","位置/高度角/方位角待ち");
+    txt("timeError","--");txt("timeVerdict","--");
+    if($("solarAmPm"))txt("solarAmPm","判定保留");
+    if($("solarHourAngle"))txt("solarHourAngle","--");
+    if($("solarAzimuthSide"))txt("solarAzimuthSide","--");
+    return;
+  }
+
+  const now=new Date();
+  const {dec,eot}=solarDeclinationAndEot(now);
+  const signed=solarHourAngleSigned(geo.lat,ce,dec/rad,ph);
+
+  if(!signed){
+    txt("estimatedTime","計算範囲外");
+    txt("timeError","--");txt("timeVerdict","--");
+    if($("solarAmPm"))txt("solarAmPm","判定保留");
+    if($("solarHourAngle"))txt("solarHourAngle","--");
+    if($("solarAzimuthSide"))txt("solarAzimuthSide","--");
+    return;
+  }
+
+  /*
+   * 真太陽時 = 12:00 + H/15
+   * H<0 → 午前、H>0 → 午後
+   */
+  const H=finite(signed.hourAngle)?signed.hourAngle:0;
+  const solarHours=12+H/15;
+
+  // 日本標準時子午線135°E、均時差と経度差を補正。
+  const jstHours=solarHours-(4*(geo.lon-135)+eot)/60;
+  const totalMinutes=((jstHours*60)%1440+1440)%1440;
+  const hh=Math.floor(totalMinutes/60);
+  const mm=Math.round(totalMinutes%60)%60;
+
+  const estMin=hh*60+mm;
+  const actualMin=now.getHours()*60+now.getMinutes();
+  let diff=estMin-actualMin;
+  if(diff>720)diff-=1440;
+  if(diff<-720)diff+=1440;
+
+  txt("estimatedTime",String(hh).padStart(2,"0")+":"+String(mm).padStart(2,"0"));
+  txt("timeError",(diff>=0?"+":"")+diff+"分");
+  txt("timeVerdict",
+    signed.confidence==="low"
+      ?"天頂付近：午前/午後判定は保留気味"
+      :(Math.abs(diff)<=10?"参考上は近い":Math.abs(diff)<=30?"差あり":"大きな差")
+  );
+
+  if($("solarAmPm"))txt("solarAmPm",solarPartOfDayFromHourAngle(signed.hourAngle));
+  if($("solarHourAngle")){
+    txt("solarHourAngle",
+      finite(signed.hourAngle)
+        ?(signed.hourAngle>=0?"+":"")+signed.hourAngle.toFixed(2)+"°"
+        :"--"
+    );
+  }
+  if($("solarAzimuthSide")){
+    txt("solarAzimuthSide",
+      signed.side==="east"?"南中前（太陽は東側）":
+      signed.side==="west"?"南中後（太陽は西側）":
+      signed.side==="noon"?"南中付近":
+      "方位判定の信頼度が低い"
+    );
+  }
 }
 function makeRow(){
  const now=new Date(),h=parseFloat($("height").value)||0,R=6371000,dip=Math.sqrt(2*Math.max(0,h)/R)/rad;
