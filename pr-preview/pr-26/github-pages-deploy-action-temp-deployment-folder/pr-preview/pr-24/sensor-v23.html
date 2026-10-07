@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <title>太陽ウォッチ センサー検証 v24 読み込み中</title>
+  <style>
+    body{margin:0;background:#f6f7f8;color:#222;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    .loading{max-width:720px;margin:40px auto;padding:20px}
+    .card{background:#fff;border:1px solid #ddd;border-radius:14px;padding:18px}
+    pre{white-space:pre-wrap;word-break:break-word}
+  </style>
+</head>
+<body>
+  <div class="loading"><div class="card" id="status">Android 3D方位 v24 を読み込んでいます…</div></div>
+  <script>
+    (async () => {
+      const status = document.getElementById('status');
+      try {
+        let html = await fetch('sensor.html', {cache: 'no-store'}).then(r => {
+          if (!r.ok) throw new Error('sensor.html の取得に失敗: ' + r.status);
+          return r.text();
+        });
+
+        const replaceOnce = (from, to, label) => {
+          if (!html.includes(from)) throw new Error('パッチ対象が見つかりません: ' + label);
+          html = html.replace(from, to);
+        };
+
+        replaceOnce(
+          '<title>太陽ウォッチ センサー検証 v22-ios-heading-parity-recovery</title>',
+          '<title>太陽ウォッチ センサー検証 v24-android-event-separation</title>',
+          'title'
+        );
+
+        replaceOnce(
+          '📡 センサー検証プロトタイプ v22-ios-heading-parity-recovery',
+          '📡 センサー検証プロトタイプ v24-android-event-separation',
+          'heading'
+        );
+
+        replaceOnce(
+          'let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""}; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true;',
+          'let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""}; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true; let android3dHeadingState={offset:null,lastHeading:null,anchorCount:0}; let androidOrientationDebug={poseEventType:"",absoluteEventTs:null,lastMotionTs:null,motionHoldUntil:0};',
+          'android state'
+        );
+
+        replaceOnce(
+`function primaryHeading(){
+ const ih=iphoneHeadingCorrected();
+ if(finite(ih))return norm(ih+(headingCalibration.enabled?headingCalibration.offset:0));
+ return cur.heading;
+}`,
+`function updateAndroid3dHeadingAnchor(){
+ if(os!=="Android"||!cur.camera3d||!finite(cur.camera3d.rawHeading)||!finite(cur.b)||!finite(cur.absAlpha))return;
+ const b=norm(cur.b), horizontal=cur.camera3d.horizontal;
+ // 90°近傍ではEuler角表現が切り替わるため、北基準オフセットは低傾斜域だけで更新する。
+ if(b>75||horizontal<0.5)return;
+ // 激しく動かした直後はAndroid側の方位推定が収束途中になりやすいので、アンカー学習を止める。
+ if(performance.now()<androidOrientationDebug.motionHoldUntil)return;
+ // 北基準は deviceorientationabsolute、3D姿勢は deviceorientation と役割を分離する。
+ const absoluteHeading=norm(360-cur.absAlpha+screenDeg());
+ const target=norm(cd(absoluteHeading,cur.camera3d.rawHeading));
+ if(!finite(android3dHeadingState.offset))android3dHeadingState.offset=target;
+ else android3dHeadingState.offset=norm(android3dHeadingState.offset+cd(target,android3dHeadingState.offset)*0.05);
+ android3dHeadingState.anchorCount++;
+}
+function android3dHeading(){
+ if(os!=="Android"||!cur.camera3d||!finite(cur.camera3d.rawHeading)||!finite(android3dHeadingState.offset))return null;
+ if(cur.camera3d.horizontal<0.18)return null;
+ const h=norm(cur.camera3d.rawHeading+android3dHeadingState.offset+(headingCalibration.enabled?headingCalibration.offset:0));
+ android3dHeadingState.lastHeading=h;
+ return h;
+}
+function primaryHeading(){
+ const ih=iphoneHeadingCorrected();
+ if(finite(ih))return norm(ih+(headingCalibration.enabled?headingCalibration.offset:0));
+ const ah=android3dHeading();
+ if(finite(ah))return ah;
+ return cur.heading;
+}`,
+          'primaryHeading'
+        );
+
+        replaceOnce(
+` const ori=e=>{
+  cur.a=finite(e.alpha)?e.alpha:null;cur.b=finite(e.beta)?e.beta:null;cur.g=finite(e.gamma)?e.gamma:null;cur.absolute=e.absolute===true;cur.oriTs=e.timeStamp;
+  cur.iosHeading=finite(e.webkitCompassHeading)?norm(e.webkitCompassHeading):null;cur.iosAccuracy=finite(e.webkitCompassAccuracy)?e.webkitCompassAccuracy:null;
+  if(finite(cur.iosHeading))updateIphoneHeadingFlipState(cur.iosHeading);
+  if(e.type==="deviceorientationabsolute"&&finite(e.alpha))cur.absAlpha=e.alpha;
+  const ang=screenDeg();
+  let rawHeading=null;if(finite(cur.iosHeading)){rawHeading=norm(cur.iosHeading+ang);cur.source="iPhoneコンパス"}
+  else if(e.absolute===true&&finite(e.alpha)){rawHeading=disableAlphaInversion?norm(e.alpha+ang):norm(360-e.alpha+ang);cur.source=disableAlphaInversion?"Android絶対方向値（反転無効）":"Android絶対方向値（360-alpha）"}
+  else if(finite(cur.absAlpha)){rawHeading=disableAlphaInversion?norm(cur.absAlpha+ang):norm(360-cur.absAlpha+ang);cur.source=disableAlphaInversion?"絶対方向イベント（反転無効）":"絶対方向イベント（360-alpha）"}
+  else{rawHeading=null;cur.source="北基準方位を確定できず"}
+  cur.rawHeading=rawHeading;cur.heading=finite(rawHeading)?norm(rawHeading+(headingCalibration.enabled?headingCalibration.offset:0)):null;
+  cur.camera3d=cameraVectorFromOrientation(cur.a,cur.b,cur.g);
+  if(cur.camera3d&&finite(cur.camera3d.rawHeading)){
+   if(finite(cur.prev3dHeading))cur.last3dJump=cd(cur.camera3d.rawHeading,cur.prev3dHeading);
+   cur.prev3dHeading=cur.camera3d.rawHeading;
+  }
+  if(finite(cur.b)&&finite(cur.g)){const vz=-Math.cos(cur.b*rad)*Math.cos(cur.g*rad);cur.elev=Math.max(-90,Math.min(90,Math.asin(vz)/rad))}
+  render();sample()
+ };`,
+` const ori=e=>{
+  const isAbsoluteEvent=e.type==="deviceorientationabsolute";
+  // Androidでは2種類のイベントを混ぜない。
+  // deviceorientationabsolute は北基準アンカーだけ更新し、3D姿勢 a/b/g は上書きしない。
+  if(os==="Android"&&isAbsoluteEvent){
+   if(finite(e.alpha))cur.absAlpha=e.alpha;
+   androidOrientationDebug.absoluteEventTs=e.timeStamp;
+   const ang=screenDeg();
+   if(finite(cur.absAlpha)){
+    const rawHeading=disableAlphaInversion?norm(cur.absAlpha+ang):norm(360-cur.absAlpha+ang);
+    cur.rawHeading=rawHeading;
+    cur.heading=norm(rawHeading+(headingCalibration.enabled?headingCalibration.offset:0));
+    cur.source=disableAlphaInversion?"絶対方向イベント（反転無効・アンカー専用）":"絶対方向イベント（360-alpha・アンカー専用）";
+   }
+   updateAndroid3dHeadingAnchor();
+   render();sample();return;
+  }
+
+  cur.a=finite(e.alpha)?e.alpha:null;cur.b=finite(e.beta)?e.beta:null;cur.g=finite(e.gamma)?e.gamma:null;cur.absolute=e.absolute===true;cur.oriTs=e.timeStamp;
+  androidOrientationDebug.poseEventType=e.type;
+  cur.iosHeading=finite(e.webkitCompassHeading)?norm(e.webkitCompassHeading):null;cur.iosAccuracy=finite(e.webkitCompassAccuracy)?e.webkitCompassAccuracy:null;
+  if(finite(cur.iosHeading))updateIphoneHeadingFlipState(cur.iosHeading);
+  if(isAbsoluteEvent&&finite(e.alpha))cur.absAlpha=e.alpha;
+  const ang=screenDeg();
+  let rawHeading=null;if(finite(cur.iosHeading)){rawHeading=norm(cur.iosHeading+ang);cur.source="iPhoneコンパス"}
+  else if(e.absolute===true&&finite(e.alpha)){rawHeading=disableAlphaInversion?norm(e.alpha+ang):norm(360-e.alpha+ang);cur.source=disableAlphaInversion?"Android絶対方向値（反転無効）":"Android絶対方向値（360-alpha）"}
+  else if(finite(cur.absAlpha)){rawHeading=disableAlphaInversion?norm(cur.absAlpha+ang):norm(360-cur.absAlpha+ang);cur.source=disableAlphaInversion?"絶対方向イベント（反転無効）":"絶対方向イベント（360-alpha）"}
+  else{rawHeading=null;cur.source="北基準方位を確定できず"}
+  cur.rawHeading=rawHeading;cur.heading=finite(rawHeading)?norm(rawHeading+(headingCalibration.enabled?headingCalibration.offset:0)):null;
+  cur.camera3d=cameraVectorFromOrientation(cur.a,cur.b,cur.g);
+  updateAndroid3dHeadingAnchor();
+  if(cur.camera3d&&finite(cur.camera3d.rawHeading)){
+   if(finite(cur.prev3dHeading))cur.last3dJump=cd(cur.camera3d.rawHeading,cur.prev3dHeading);
+   cur.prev3dHeading=cur.camera3d.rawHeading;
+  }
+  if(finite(cur.b)&&finite(cur.g)){const vz=-Math.cos(cur.b*rad)*Math.cos(cur.g*rad);cur.elev=Math.max(-90,Math.min(90,Math.asin(vz)/rad))}
+  render();sample()
+ };`,
+          'orientation event separation'
+        );
+
+        replaceOnce(
+          'cur.motionInterval=finite(e.interval)?e.interval:null;cur.motTs=e.timeStamp;render();sample()',
+          'cur.motionInterval=finite(e.interval)?e.interval:null;cur.motTs=e.timeStamp;androidOrientationDebug.lastMotionTs=e.timeStamp;const motionRate=Math.max(...[cur.ra,cur.rb,cur.rg].filter(finite).map(Math.abs),0);if(os==="Android"&&motionRate>=8)androidOrientationDebug.motionHoldUntil=performance.now()+3000;render();sample()',
+          'motion hold'
+        );
+
+        replaceOnce(
+          'txt("headingSource",finite(cur.iosHeading)?"iPhoneコンパス + 180°ジャンプ検知補正（試験）":cur.source);txt("compassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");',
+          'txt("headingSource",finite(cur.iosHeading)?"iPhoneコンパス + 180°ジャンプ検知補正（試験）":os==="Android"&&finite(android3dHeading())?"Android 3D姿勢方位（相対姿勢/絶対方位を分離）":cur.source);txt("compassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");',
+          'heading source display'
+        );
+
+        replaceOnce(
+          'primary_heading_source:finite(cur.iosHeading)?"ios_webkit_compass_jump_toggle_correction":"os_heading_only",primary_elevation_source:',
+          'primary_heading_source:finite(cur.iosHeading)?"ios_webkit_compass_jump_toggle_correction":os==="Android"&&finite(android3dHeading())?"android_3d_orientation_heading_separated":"os_heading_fallback",android_3d_heading_offset_deg:android3dHeadingState.offset,android_3d_heading_anchor_count:android3dHeadingState.anchorCount,android_pose_event_type:androidOrientationDebug.poseEventType,android_absolute_event_timestamp:androidOrientationDebug.absoluteEventTs,android_motion_hold_remaining_ms:Math.max(0,androidOrientationDebug.motionHoldUntil-performance.now()),primary_elevation_source:',
+          'CSV primary source'
+        );
+
+        html = html.replace(
+          '主方位はOS側の方位値、3D方位は診断用です。',
+          'iPhoneはOS側方位を主値にします。Androidは deviceorientation を3D姿勢、deviceorientationabsolute を北基準アンカーとして分離し、動作直後はアンカー学習を一時停止します。'
+        );
+
+        document.open();
+        document.write(html);
+        document.close();
+      } catch (e) {
+        status.innerHTML = '<strong>読み込みエラー</strong><pre>' + String(e && e.stack || e) + '</pre>';
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>太陽ウォッチ センサー検証 v22-ios-heading-parity-recovery</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f6f7f8;color:#222;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:920px;margin:auto;padding:14px}.card{background:#fff;border:1px solid #ddd;border-radius:14px;padding:14px;margin-bottom:14px}h1{font-size:1.3rem;margin:0 0 6px}h2{font-size:1rem;margin:0 0 10px}.muted,.mini{color:#666;font-size:.82rem}.grid,.row,.actions,.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}.metric{background:#fafafa;border:1px solid #e5e5e5;border-radius:10px;padding:9px;min-width:0}.label{font-size:.72rem;color:#666}.value{font-family:ui-monospace,monospace;font-weight:700;font-size:1rem;word-break:break-word}.big{font-size:1.45rem}.status{padding:10px;border-radius:10px;background:#fff7dd;border:1px solid #ead274;font-size:.86rem;margin:10px 0}.ok{background:#eaf8ef;border-color:#93d3ab}.warn{background:#fff7dd;border-color:#ead274}.bad{background:#fff0f0;border-color:#e0aaaa}.info{background:#edf4ff;border-color:#abc5ef}.pill{display:inline-block;border-radius:999px;padding:5px 9px;font-size:.78rem;font-weight:700}.pill.ok{background:#dff3e7}.pill.warn{background:#fff0b8}.pill.bad{background:#ffdada}button{width:100%;border:0;border-radius:10px;padding:12px 9px;font-size:16px;font-weight:700;cursor:pointer;background:#eef1f4;color:#222}.primary{background:#087f5b;color:#fff}.danger{background:#b83232;color:#fff}.tab.active{background:#222;color:#fff}button:disabled{opacity:.45;cursor:not-allowed}label{display:block;font-size:.82rem;font-weight:700;margin:8px 0 4px}input,select,textarea{width:100%;padding:10px;border:1px solid #bbb;border-radius:8px;font-size:16px;background:#fff}textarea{min-height:80px}.hidden{display:none}.back{display:inline-block;margin-bottom:12px;color:#087f5b;text-decoration:none;font-weight:700}#cameraBox{position:relative;background:#111;border-radius:12px;overflow:hidden;aspect-ratio:4/3;margin-top:10px}video{width:100%;height:100%;object-fit:cover}.reticle{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:88px;height:88px;border:3px dashed #ffd54a;border-radius:50%;pointer-events:none}.csvbox{font-family:ui-monospace,monospace;font-size:12px;white-space:pre;overflow:auto;max-height:300px;background:#111;color:#eee;padding:10px;border-radius:10px}.score{display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid #ddd;border-radius:10px;padding:10px;margin:7px 0}.modepanel{display:none}.modepanel.active{display:block}.wrap{display:flex;flex-direction:column}.measure-focus{border:2px solid #087f5b}.measure-values{grid-template-columns:repeat(3,1fr)}.section-note{font-size:.76rem;color:#666;margin-top:6px}.detail-card{background:#fbfbfb}@media(max-width:620px){.grid,.row,.actions,.tabs,.measure-values{grid-template-columns:1fr 1fr}.measure-focus #record{position:sticky;bottom:10px;z-index:5;box-shadow:0 4px 16px rgba(0,0,0,.18)}}
+.measure-console{border:2px solid #087f5b}.measure-live-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.live-main{border:2px solid #087f5b;background:#f0fbf7}.live-number{font-size:2rem}.record-essential{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.record-essential-item{border:3px solid #087f5b;border-radius:12px;padding:12px;text-align:center;background:#f0fbf7}.record-essential-label{font-size:.8rem;font-weight:700;color:#555}.record-essential-value{font-family:ui-monospace,monospace;font-size:2.4rem;font-weight:800;line-height:1.15}.record-button{font-size:18px;padding:15px}.measure-console.recording-active{position:sticky;top:6px;z-index:20;box-shadow:0 6px 20px rgba(0,0,0,.18)}.measure-console.recording-active .status.info{display:none}@media(max-width:620px){.measure-live-grid{grid-template-columns:1fr 1fr}.live-number{font-size:1.8rem}.measure-console.recording-active{top:0;border-radius:0;margin-left:-14px;margin-right:-14px;padding-left:14px;padding-right:14px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<a class="back" href="index.html">← プロトタイプ選択へ</a>
+
+<div class="card">
+<h1>📡 センサー検証プロトタイプ v22-ios-heading-parity-recovery</h1>
+<div class="muted">センサー値を集めながら、その場で妥当性を確認する検証版です。地磁気・OS方位・端末姿勢を分離して検証する版です。主方位はOS側の方位値、3D方位は診断用です。高度角は液晶面の前後回転を表す DeviceOrientation beta を0〜359°へ正規化して表示します。液晶上向き水平=0°、液晶手前向き直角=90°、液晶下向き水平=180°、液晶反対向き直角=270°、一周で360°→0°です。重力ベクトル方式は比較用として残します。</div>
+</div>
+
+<div class="card">
+<h2>1. 利用開始</h2>
+<div id="env" class="status">端末環境を確認しています…</div>
+<button id="startAll" class="primary">必要なアクセスを許可して自動取得を開始</button>
+<div id="help" class="status hidden"></div>
+</div>
+
+<div class="card">
+<h2>2. 検証モード</h2>
+<div class="tabs">
+<button class="tab active" data-mode="free">自由測定</button>
+<button class="tab" data-mode="reference">正解値と比較</button>
+<button class="tab" data-mode="guided">指示付き検証</button>
+<button class="tab" data-mode="solar">太陽・仮時刻</button>
+</div>
+<div class="mini" style="margin-top:8px">同じ生センサーデータを保存しつつ、見せ方だけを切り替えます。</div>
+</div>
+
+<div class="card">
+<h2>3. 自動取得中の基本情報</h2>
+<div class="grid">
+<div class="metric"><div class="label">現在時刻</div><div id="clock" class="value">--</div></div>
+<div class="metric"><div class="label">端末</div><div id="platform" class="value">--</div></div>
+<div class="metric"><div class="label">緯度・経度</div><div id="latlon" class="value">未取得</div></div>
+<div class="metric"><div class="label">GPS標高</div><div id="gpsAltitude" class="value">未取得</div></div>
+<div class="metric"><div class="label">位置精度</div><div id="gpsAccuracy" class="value">--</div></div>
+<div class="metric"><div class="label">標高精度</div><div id="altAccuracy" class="value">--</div></div>
+</div>
+</div>
+
+<div class="card">
+<h2>4. あなたが入力する項目</h2>
+<div class="row">
+<div><label>この端末の名前</label><input id="deviceId" value="端末1" placeholder="例：iPhone_A、Android_A"></div>
+<div><label>測定条件ID</label><input id="testConditionId" value="A1" placeholder="例：A1、北_水平_01"></div>
+<div><label>測定場所</label><select id="place"><option>地上</option><option>屋上</option><option>ベランダ</option><option>屋内</option><option>その他</option></select></div>
+<div><label>地面からスマホまでのおおよその高さ（m）</label><input id="height" type="number" step="0.1" value="1.5"></div>
+<div><label>持ち方</label><select id="condition"><option>スマホを固定</option><option>手で持って静止</option><option>太陽に照準</option><option>その他</option></select></div>
+</div>
+<label>その場で気づいたこと</label>
+<textarea id="notes" placeholder="例：鉄骨の近く、風が強い、室内、窓際など"></textarea>
+</div>
+
+<div class="card">
+<h2>5. リアルタイムで見える値</h2>
+<div id="sensorStatus" class="status">利用開始ボタンを押してください</div>
+<div class="grid">
+<div class="metric"><div class="label">補正後の方位（北=0°、0〜359°）</div><div id="heading" class="value big">--</div><div id="headingDir" class="mini">北0 / 東90 / 南180 / 西270 / 359の次は0</div></div>
+<div class="metric"><div class="label">高度角（360°方式：水平0°・真上90°・裏向き水平180°）</div><div id="elevation" class="value big">--</div><div id="elevationSource" class="mini">2点校正後に主値として使用</div></div>
+<div class="metric"><div class="label">端末の3方向の回転角</div><div id="rawOri" class="value">--</div></div>
+<div class="metric"><div class="label">重力を含む加速度</div><div id="gravity" class="value">--</div></div>
+<div class="metric"><div class="label">重力を除いた加速度</div><div id="accel" class="value">--</div></div>
+<div class="metric"><div class="label">回転速度</div><div id="rotation" class="value">--</div></div>
+<div class="metric"><div class="label">方位の取得方法</div><div id="headingSource" class="value">--</div></div>
+<div class="metric"><div class="label">コンパス推定誤差</div><div id="compassAccuracy" class="value">--</div></div>
+</div>
+<div id="cameraBox" class="hidden"><video id="video" autoplay playsinline muted></video><div class="reticle"></div></div>
+</div>
+
+
+
+
+<div class="card">
+<h2>5.3 3Dカメラ方向（新方式）</h2>
+<div class="status info">端末の alpha / beta / gamma を1つの3D姿勢として扱い、背面カメラが向いている方向を East / North / Up ベクトルへ変換します。傾けたときに alpha だけを見る旧方式より、iPhoneの180°反転やAndroidの傾斜時ズレに強いかを検証します。</div>
+<div class="grid">
+<div class="metric"><div class="label">3D方位（北0°）</div><div id="camera3dHeading" class="value big">--</div></div>
+<div class="metric"><div class="label">3Dカメラ光軸高度（診断用・主高度ではない）</div><div id="camera3dElevation" class="value big">--</div></div>
+<div class="metric"><div class="label">カメラ方向 E / N / U</div><div id="camera3dVector" class="value">--</div></div>
+<div class="metric"><div class="label">方位の信頼度</div><div id="camera3dReliability" class="value">--</div></div>
+</div>
+<div class="mini">天頂付近では水平成分が小さくなるため、どの方式でも方位角そのものが不安定になります。その場合は「方位低信頼」と表示します。</div>
+</div>
+
+<div class="card">
+<h2>5.35 方位反転処理の検証</h2>
+<div class="status info">W3C仕様では、端末が水平なとき alpha はコンパス方位と逆向きに増えるため、一般的に <b>360 - alpha</b> を使います。ここでは反転現象の切り分け用に、その処理を無効化できます。iPhoneの webkitCompassHeading にはこの切替は適用しません。</div>
+<label style="display:flex;align-items:center;gap:8px;font-weight:700"><input id="disableAlphaInversion" type="checkbox" style="width:auto"> Android等の「360 - alpha」反転処理を無効化する（検証用）</label>
+<div class="grid" style="margin-top:10px">
+<div class="metric"><div class="label">alpha 生値</div><div id="alphaRawDisplay" class="value">--</div></div>
+<div class="metric"><div class="label">alpha をそのまま方位化</div><div id="alphaDirectDisplay" class="value">--</div></div>
+<div class="metric"><div class="label">360 - alpha 方位</div><div id="alphaInvertedDisplay" class="value">--</div></div>
+<div class="metric"><div class="label">現在採用中</div><div id="alphaModeDisplay" class="value">--</div></div>
+</div>
+</div>
+
+<div class="card">
+<h2>5.36 iPhone方位反転の切り分け</h2>
+<div class="status info">iPhoneでは webkitCompassHeading をOSコンパスの生値として扱い、alpha系の値と同時比較します。補正はせず、どの値が180°反転するかを確認します。</div>
+<div class="grid">
+<div class="metric"><div class="label">webkitCompassHeading 生値</div><div id="iosHeadingRawDisplay" class="value big">--</div></div>
+<div class="metric"><div class="label">360 - webkitCompassHeading</div><div id="iosHeadingInvertedDisplay" class="value">--</div></div>
+<div class="metric"><div class="label">alpha 生値</div><div id="iosAlphaRawDisplay" class="value">--</div></div>
+<div class="metric"><div class="label">360 - alpha</div><div id="iosAlphaInvertedDisplay" class="value">--</div></div>
+<div class="metric"><div class="label">webkitCompassHeading と 360-alpha の差</div><div id="iosHeadingVsAlphaDisplay" class="value">--</div></div><div class="metric"><div class="label">反転検知補正後方位</div><div id="iosHeadingCorrectedDisplay" class="value">--</div></div><div class="metric"><div class="label">補正適用</div><div id="iosHeadingCorrectionDisplay" class="value">--</div></div>
+<div class="metric"><div class="label">現在の高度角</div><div id="iosElevationDisplay" class="value">--</div></div>
+</div>
+<div class="mini">検証では北を向いたまま高度だけをゆっくり上げ、webkitCompassHeading / alpha / beta / gamma / 高度角を同時記録します。</div>
+</div>
+
+<div class="card">
+<h2>5.4 方位キャリブレーション</h2>
+<div class="status info">3D方位には北基準のアンカーが必要です。スマホを水平に置き、<b>スマホの上辺（受話口・インカメラ側）を実際の北へ向けて</b>から登録してください。この校正ではカメラ光軸の方位ではなく、端末上辺のコンパス方位と alpha の差を使います。</div>
+<div class="actions">
+<button id="calNorth">この向きを北0°として登録</button>
+<button id="clearHeadingCal">方位補正を解除</button>
+</div>
+<div class="grid" style="margin-top:10px">
+<div class="metric"><div class="label">補正前の方位</div><div id="rawHeadingDisplay" class="value">--</div></div>
+<div class="metric"><div class="label">補正後の方位</div><div id="calHeadingDisplay" class="value big">--</div></div>
+<div class="metric"><div class="label">適用中の補正量</div><div id="headingOffsetDisplay" class="value">0.0°</div></div>
+<div class="metric"><div class="label">補正状態</div><div id="headingCalibrationStatus" class="value">未補正</div></div>
+</div>
+</div>
+
+<div class="card">
+<h2>5.5 高度角キャリブレーション</h2>
+<div class="status info">高度角は校正なしでも表示します。「水平を0°として登録」は端末固有のゼロずれ補正として使います。「真上90°」は旧方式との比較用に残します。</div>
+<div class="actions">
+<button id="calHorizontal">水平を0°として登録</button>
+<button id="calZenith">真上を90°として登録</button>
+</div>
+<div class="grid" style="margin-top:10px">
+<div class="metric"><div class="label">キャリブレーション済み高度角</div><div id="calibratedElevation" class="value big">--</div></div>
+<div class="metric"><div class="label">キャリブレーション状態</div><div id="calibrationStatus" class="value">未登録</div></div>
+</div>
+<div class="mini">この値を主に比較し、従来の「高度角候補」も検証用として残します。</div>
+</div>
+
+
+<div id="cardMeasureValues" class="hidden">
+<h2>今回の測定で見る値</h2>
+<div id="measureInstruction" class="status info">モードに応じて、ここに見るべき値をまとめます。</div>
+<div class="grid measure-values">
+<div class="metric"><div class="label">採用方位</div><div id="focusHeading" class="value big">--</div></div>
+<div class="metric"><div class="label">採用高度</div><div id="focusElevation" class="value big">--</div></div>
+<div class="metric"><div class="label">方位信頼度</div><div id="focusReliability" class="value">--</div></div>
+<div class="metric"><div class="label">目標方位</div><div id="focusTargetHeading" class="value">--</div></div>
+<div class="metric"><div class="label">目標高度</div><div id="focusTargetElevation" class="value">--</div></div>
+<div class="metric"><div class="label">目標との差</div><div id="focusError" class="value">--</div></div>
+</div>
+<div class="section-note">生のalpha/beta/gammaやGPSなどは下部の「詳細」欄に残しています。</div>
+</div>
+
+<div id="freePanel" class="card modepanel active">
+<h2>自由測定</h2>
+<div class="status info">通常のセンサー収集です。測定後に安定性・欠損・方位精度などの診断を表示します。</div>
+</div>
+
+<div id="referencePanel" class="card modepanel">
+<h2>正解値と比較</h2>
+<div class="status info">室内でも使えます。基準となる方向と角度を先に決めて、実測との差を色で確認します。</div>
+<div class="row">
+<div><label>正解の方位角（北0°、東90°、南180°、西270°）</label><input id="targetHeading" type="number" min="0" max="359.9" step="0.1" value="90"></div>
+<div><label>正解の高度角（水平0°、真上90°）</label><input id="targetElevation" type="number" min="0" max="359.9" step="0.1" value="45"></div>
+</div>
+<div class="grid">
+<div class="metric"><div class="label">方位の差</div><div id="headingError" class="value big">--</div></div>
+<div class="metric"><div class="label">高度の差</div><div id="elevationError" class="value big">--</div></div>
+</div>
+<div id="referenceVerdict" class="status">測定待ち</div>
+</div>
+
+<div id="guidedPanel" class="card modepanel">
+<h2>指示付き検証</h2>
+<div class="status info">太陽は不要です。まず指定された高度角まで傾け、その角度を保ったまま左右へ回して方位を合わせてください。</div>
+<div class="metric"><div class="label">今回の指示</div><div id="guidedInstruction" class="value big">東を向き、水平から30°上へ</div></div>
+<div class="actions" style="margin-top:10px">
+<button id="prevScenario">前の指示</button><button id="nextScenario" class="primary">次の指示</button>
+</div>
+<div class="grid" style="margin-top:10px">
+<div class="metric"><div class="label">目標方位</div><div id="guidedTargetHeading" class="value">--</div></div>
+<div class="metric"><div class="label">目標高度</div><div id="guidedTargetElevation" class="value">--</div></div>
+<div class="metric"><div class="label">実測方位</div><div id="guidedMeasuredHeading" class="value">--</div></div>
+<div class="metric"><div class="label">実測高度</div><div id="guidedMeasuredElevation" class="value">--</div></div>
+<div class="metric"><div class="label">方位の差（実測−目標）</div><div id="guidedHeadingError" class="value">--</div></div>
+<div class="metric"><div class="label">高度の差（実測−目標）</div><div id="guidedElevationError" class="value">--</div></div>
+</div>
+<div id="guidedVerdict" class="status">測定待ち</div>
+</div>
+
+<div id="solarPanel" class="card modepanel">
+<h2>太陽・仮時刻チェック</h2>
+<div class="status warn">参考機能です。太陽を実際に中央へ合わせたときだけ妥当性確認に使ってください。現在の高度角変換は検証中です。</div>
+<div class="grid">
+<div class="metric"><div class="label">実際の端末時刻</div><div id="actualTime" class="value big">--</div></div>
+<div class="metric"><div class="label">太陽位置からの仮推定時刻</div><div id="estimatedTime" class="value big">--</div></div>
+<div class="metric"><div class="label">実時刻との差</div><div id="timeError" class="value big">--</div></div>
+<div class="metric"><div class="label">判定</div><div id="timeVerdict" class="value">--</div></div><div class="metric"><div class="label">時角の正負</div><div id="hourAngleSign" class="value">--</div></div><div class="metric"><div class="label">午前 / 午後</div><div id="amPm判定" class="value">--</div></div>
+</div>
+<div class="mini">GPS緯度・経度、現在日付、実測高度角、実測方位角から時角Hを計算します。太陽が南中線より東側ならH&lt;0（午前）、西側ならH&gt;0（午後）として自動判定し、H=0°付近は南中として扱います。日本向けの検証用アルゴリズムです。</div>
+</div>
+
+<div class="card measure-console" id="cardRecord">
+<h2>6. 10秒測定</h2><div class="mini">UI版: record-sampling-v3</div>
+<div class="status info">測定中はここだけ見れば高度角と方位の変化を追えます。iPhoneでは高度120〜150°付近の約180°ジャンプで反転状態を切り替えます。さらに、低高度側で補正ONのまま残る／150〜180°側で補正OFFのまま残る矛盾を安全域で自動復旧します。</div>
+<div class="measure-live-grid">
+<div class="metric live-main"><div class="label">高度角（水平0°）</div><div id="recordLiveElevation" class="value live-number">--</div></div>
+<div class="metric live-main"><div class="label">採用方位（OS方位）</div><div id="recordLiveHeading" class="value live-number">--</div></div>
+<div class="metric"><div class="label">webkitCompassHeading 生値</div><div id="recordIosHeading" class="value">--</div></div><div class="metric"><div class="label">反転検知補正後のiPhone方位</div><div id="recordIosHeadingCorrected" class="value">--</div></div><div class="metric"><div class="label">反転検知補正状態</div><div id="recordIosCorrectionState" class="value">--</div></div>
+<div class="metric"><div class="label">alpha</div><div id="recordAlpha" class="value">--</div></div>
+<div class="metric"><div class="label">360 - alpha</div><div id="recordAlphaInv" class="value">--</div></div>
+<div class="metric"><div class="label">3D診断方位</div><div id="record3dHeading" class="value">--</div></div><div class="metric"><div class="label">beta生値 / 360化</div><div id="recordBetaElevation" class="value">--</div></div>
+</div>
+<div id="recordMotionGuide" class="status">停止中：高度角を確認してから測定を開始してください。</div>
+<div class="record-essential">
+  <div class="record-essential-item"><div class="record-essential-label">現在の方位角</div><div id="recordHeadingNearButton" class="record-essential-value">--</div></div>
+  <div class="record-essential-item"><div class="record-essential-label">現在の高度角</div><div id="recordElevationNearButton" class="record-essential-value">--</div></div>
+</div>
+<button id="record" class="primary record-button">今すぐ10秒測定</button>
+<div id="recordStatus" class="status">未測定</div>
+<div class="grid">
+<div class="metric"><div class="label">今回のデータ数</div><div id="count" class="value">0</div></div>
+<div class="metric"><div class="label">保存済み総データ数</div><div id="savedCount" class="value">0</div></div>
+<div class="metric"><div class="label">平均記録間隔</div><div id="avgInterval" class="value">--</div></div>
+<div class="metric"><div class="label">最大データ間隔</div><div id="maxInterval" class="value">--</div></div>
+</div>
+</div>
+
+<div class="card">
+<h2>7. その場で分かる診断</h2>
+<div class="score"><span>方位の安定性</span><span id="diagHeading" class="pill warn">未測定</span></div>
+<div class="score"><span>高度角の安定性</span><span id="diagElevation" class="pill warn">未測定</span></div>
+<div class="score"><span>手ブレ・動き</span><span id="diagMotion" class="pill warn">未測定</span></div>
+<div class="score"><span>コンパスの自己申告精度</span><span id="diagCompass" class="pill warn">未測定</span></div>
+<div class="score"><span>データ欠損</span><span id="diagGap" class="pill warn">未測定</span></div>
+<div id="overall" class="status">測定後に総合コメントを表示します。</div>
+</div>
+
+<div class="card">
+<h2>8. CSV保存・確認</h2>
+<div class="status">「CSVを共有・保存」がスマホでは簡単です。ブラウザ内のデータは削除ボタンを押すまで保持します。</div>
+<div class="actions"><button id="shareCsv" class="primary">CSVを共有・保存</button><button id="downloadCsv">CSVをダウンロード</button></div>
+<button id="previewCsv" style="margin-top:8px">CSVの中身を確認</button>
+<div id="csvPreview" class="csvbox hidden" style="margin-top:10px"></div>
+<button id="clear" class="danger" style="margin-top:8px">保存データをすべて削除</button>
+</div>
+
+</div>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const finite=Number.isFinite, rad=Math.PI/180, norm=v=>(v%360+360)%360;
+const STORE="solarwatch_sensor_v9_3d_records", FORM="solarwatch_sensor_v9_3d_form", CAL="solarwatch_sensor_v9_3d_calibration", HCAL="solarwatch_sensor_v9_3d_heading_calibration", HCFG="solarwatch_heading_inversion_test";
+const IOS_HEADING_JUMP_MIN_DEG=150;
+const IOS_HEADING_JUMP_ELEVATION_MIN=120;
+const IOS_HEADING_JUMP_ELEVATION_MAX=150;
+const IOS_HEADING_RECOVERY_LOW_MAX=120;
+const IOS_HEADING_RECOVERY_HIGH_MIN=150;
+const ua=navigator.userAgent;
+const os=/iPhone|iPad|iPod/.test(ua)?"iPhone / iPad":/Android/.test(ua)?"Android":"その他";
+let sensorOK=false, stream=null, watchId=null, recording=false, all=[], session=[], currentSession="", lastSample=0, recordSampleTimer=null, currentMode="free";
+let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""}; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true;
+let geo={lat:null,lon:null,alt:null,accuracy:null,altAccuracy:null,timestamp:null};
+let cur={a:null,b:null,g:null,absolute:null,iosHeading:null,iosAccuracy:null,absAlpha:null,heading:null,source:"--",elev:null,camera3d:null,ax:null,ay:null,az:null,gx:null,gy:null,gz:null,ra:null,rb:null,rg:null,motionInterval:null,oriTs:null,motTs:null,magX:null,magY:null,magZ:null,magTs:null,magError:"",magPermission:"unknown",absQuat:null,absOriTs:null,absOriError:"",relQuat:null,relOriTs:null,relOriError:"",prev3dHeading:null,last3dJump:null};
+const scenarios=[
+{name:"北を向き、水平",h:0,e:0},
+{name:"東を向き、水平から30°上へ",h:90,e:30},
+{name:"南を向き、水平から45°上へ",h:180,e:45},
+{name:"西を向き、水平から60°上へ",h:270,e:60},
+{name:"南東を向き、水平から75°上へ",h:135,e:75},
+{name:"真上に近い向き（方位は参考）",h:180,e:85},
+{name:"反対向き水平（180°確認）",h:180,e:180},
+{name:"反対向き真上側（270°確認）",h:180,e:270}
+];
+let scenarioIndex=1;
+
+function local(d=new Date()){return d.toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",fractionalSecondDigits:3,hour12:false})}
+function txt(id,v){$(id).textContent=v}
+function screenDeg(){return screen.orientation&&finite(screen.orientation.angle)?screen.orientation.angle:(typeof window.orientation==="number"?window.orientation:0)}
+function cd(a,b){return ((a-b+540)%360)-180}
+function dir(h){if(!finite(h))return"--";return["北","北東","東","南東","南","南西","西","北西"][Math.round(norm(h)/45)%8]}
+function fmt(v,n=2){return finite(v)?v.toFixed(n):"--"}
+function setPill(id,state,text){const e=$(id);e.className="pill "+state;e.textContent=text}
+function saveForm(){const o={};for(const id of ["deviceId","testConditionId","place","height","condition","notes","targetHeading","targetElevation"])o[id]=$(id).value;o.currentMode=currentMode;o.scenarioIndex=scenarioIndex;localStorage.setItem(FORM,JSON.stringify(o))}
+
+const DATA_DB="solarwatch_sensor_db_v1",DATA_STORE="state",DATA_KEY="records";
+let dbPromise=null;
+function openDataDB(){
+ if(!("indexedDB" in window))return Promise.reject(new Error("IndexedDB非対応"));
+ if(dbPromise)return dbPromise;
+ dbPromise=new Promise((resolve,reject)=>{
+  const req=indexedDB.open(DATA_DB,1);
+  req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(DATA_STORE))db.createObjectStore(DATA_STORE)};
+  req.onsuccess=()=>resolve(req.result);
+  req.onerror=()=>reject(req.error||new Error("IndexedDBを開けません"));
+ });
+ return dbPromise;
+}
+async function saveRecordState(){
+ const db=await openDataDB();
+ const state={all,session,recording,currentSession,savedAt:Date.now()};
+ await new Promise((resolve,reject)=>{
+  const tx=db.transaction(DATA_STORE,"readwrite");
+  tx.objectStore(DATA_STORE).put(state,DATA_KEY);
+  tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error("保存失敗"));tx.onabort=()=>reject(tx.error||new Error("保存中断"));
+ });
+}
+async function loadRecordState(){
+ const db=await openDataDB();
+ return await new Promise((resolve,reject)=>{
+  const tx=db.transaction(DATA_STORE,"readonly"),req=tx.objectStore(DATA_STORE).get(DATA_KEY);
+  req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>reject(req.error||new Error("読込失敗"));
+ });
+}
+async function clearRecordState(){
+ try{const db=await openDataDB();await new Promise((resolve,reject)=>{const tx=db.transaction(DATA_STORE,"readwrite");tx.objectStore(DATA_STORE).delete(DATA_KEY);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)})}catch{}
+ localStorage.removeItem(STORE);
+}
+function storageError(e){
+ console.error("sensor data storage error",e);
+ txt("recordStatus","端末保存に失敗: "+(e?.name||e?.message||"保存容量/ブラウザ設定を確認"));
+ $("recordStatus").className="status bad";
+}
+function persist(){
+ try{localStorage.setItem(CAL,JSON.stringify(calibration));localStorage.setItem(HCAL,JSON.stringify(headingCalibration))}catch(e){console.warn("settings storage",e)}
+ txt("savedCount",all.length+session.length);
+ saveRecordState().catch(storageError);
+}
+async function restore(){
+ try{
+  const f=JSON.parse(localStorage.getItem(FORM)||"null");if(f){for(const id of ["deviceId","testConditionId","place","height","condition","notes","targetHeading","targetElevation"])if(f[id]!=null)$(id).value=f[id];if(f.currentMode)selectMode(f.currentMode);if(Number.isInteger(f.scenarioIndex))scenarioIndex=Math.max(0,Math.min(scenarios.length-1,f.scenarioIndex))}
+  const cal=JSON.parse(localStorage.getItem(CAL)||"null");if(cal)calibration=cal;
+  const hcal=JSON.parse(localStorage.getItem(HCAL)||"null");if(hcal){headingCalibration=hcal;if(!finite(headingCalibration.orientationFrameOffset)){headingCalibration.enabled=false;headingCalibration.orientationFrameOffset=null}}
+  const hcfg=JSON.parse(localStorage.getItem(HCFG)||"null");if(hcfg&&typeof hcfg.disableAlphaInversion==="boolean")disableAlphaInversion=hcfg.disableAlphaInversion;
+ }catch(e){console.warn("settings restore",e)}
+ let s=null;
+ try{s=await loadRecordState()}catch(e){console.warn("IndexedDB restore",e)}
+ if(!s){
+  try{s=JSON.parse(localStorage.getItem(STORE)||"null")}catch{}
+  if(s){try{const db=await openDataDB();await new Promise((resolve,reject)=>{const tx=db.transaction(DATA_STORE,"readwrite");tx.objectStore(DATA_STORE).put({...s,recording:false,savedAt:Date.now()},DATA_KEY);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});localStorage.removeItem(STORE)}catch{}}
+ }
+ if(s){
+  all=Array.isArray(s.all)?s.all:[];
+  if(Array.isArray(s.session)&&s.session.length)all.push(...s.session);
+ }
+ session=[];recording=false;
+ txt("savedCount",all.length);renderScenario();updateCalibrationStatus();updateHeadingCalibrationStatus();
+}
+
+
+function arrangeLayout(){
+ const order={
+  cardTitle:0,cardStart:1,cardMode:2,cardHeadingCal:3,cardElevationCal:4,
+  cardRecord:5,freePanel:6,referencePanel:6,guidedPanel:6,solarPanel:6,
+  cardDiagnosis:7,cardRealtime:8,cardMag:9,card3d:10,cardBasic:11,cardMeta:12,cardCsv:13
+ };
+ for(const [id,o] of Object.entries(order)){const e=$(id);if(e)e.style.order=o}
+ const mount=$("cameraMount"),cam=$("cameraBox");if(mount&&cam)mount.appendChild(cam);
+}
+function updateFocus(){
+ const ph=primaryHeading(),pe=primaryElevation(),p3=primary3d();
+ txt("focusHeading",finite(ph)?ph.toFixed(1)+"°":"--");
+ txt("focusElevation",finite(pe)?pe.toFixed(1)+"°":"--");
+ txt("focusReliability",p3?(p3.horizontal<0.18?"低：天頂付近":p3.horizontal<0.35?"注意：高高度":"通常"):"--");
+ let th=null,te=null,msg="自由測定：方位・高度・信頼度を確認して測定します。";
+ if(currentMode==="reference"){th=parseFloat($("targetHeading").value);te=parseFloat($("targetElevation").value);msg="正解値比較：目標値との差を確認して測定します。"}
+ if(currentMode==="guided"){const s=scenarios[scenarioIndex];th=s.h;te=s.e;msg="指示付き検証：①高度を合わせる → ②その角度を保って方位を合わせる → ③測定";}
+ if(currentMode==="solar"){msg="太陽・時刻：太陽を中央に合わせ、方位・高度・信頼度を確認して測定します。"}
+ txt("measureInstruction",msg);txt("measureInstructionInline",msg);
+ txt("focusTargetHeading",finite(th)?th.toFixed(1)+"°":"--");txt("focusTargetHeadingInline",finite(th)?th.toFixed(1)+"°":"--");
+ txt("focusTargetElevation",finite(te)?te.toFixed(1)+"°":"--");txt("focusTargetElevationInline",finite(te)?te.toFixed(1)+"°":"--");
+ txt("focusHeadingInline",finite(ph)?ph.toFixed(1)+"°":"--");
+ txt("focusElevationInline",finite(pe)?pe.toFixed(1)+"°":"--");
+ const rel=p3?(!headingCalibration.enabled||!finite(headingCalibration.orientationFrameOffset)?"北基準未校正":p3.horizontal<0.18?"低：天頂付近":p3.horizontal<0.35?"注意：高高度":"通常"):"--";
+ txt("focusReliabilityInline",rel);
+ if(finite(th)&&finite(te)&&finite(ph)&&finite(pe)){const he=cd(ph,th),ee=pe-te;const t="方位 "+(he>=0?"+":"")+he.toFixed(1)+"° / 高度 "+(ee>=0?"+":"")+ee.toFixed(1)+"°";txt("focusError",t);txt("focusErrorInline",t)}
+ else {txt("focusError","--");txt("focusErrorInline","--")}
+ $("solarInline").classList.toggle("hidden",currentMode!=="solar");
+}
+function tick(){const d=new Date();txt("clock",local(d));txt("actualTime",d.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}));if(currentMode==="solar")updateSolarEstimate()}
+setInterval(tick,500);tick();
+
+function selectMode(m){currentMode=m;document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.mode===m));document.querySelectorAll(".modepanel").forEach(p=>p.classList.remove("active"));$(m+"Panel").classList.add("active");updateFocus();saveForm()}
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>selectMode(b.dataset.mode));
+
+function env(){txt("platform",os+" / "+navigator.platform);const p=[];if(!window.isSecureContext)p.push("HTTPSではありません");if(typeof DeviceOrientationEvent==="undefined")p.push("方向センサー非対応");txt("env",p.length?"注意: "+p.join(" / "):"環境確認OK。アクセス許可後に測定できます");$("env").className=p.length?"status bad":"status ok"}
+
+let magnetometerSensor=null, absoluteOrientationSensor=null, relativeOrientationSensor=null;
+async function startMagnetometer(){
+ try{
+  if(navigator.permissions?.query){
+   const p=await navigator.permissions.query({name:"magnetometer"});
+   cur.magPermission=p.state;txt("magPermission",p.state);
+   p.onchange=()=>{cur.magPermission=p.state;txt("magPermission",p.state)};
+  }
+ }catch(e){cur.magPermission="query不可";txt("magPermission","query不可")}
+ txt("magSupport","Magnetometer" in window?"対応候補":"非対応");
+ if(!("Magnetometer" in window)){txt("magStatus","このブラウザでは非対応");return}
+ try{
+  magnetometerSensor=new Magnetometer({frequency:60});
+  magnetometerSensor.addEventListener("reading",()=>{
+   cur.magX=finite(magnetometerSensor.x)?magnetometerSensor.x:null;
+   cur.magY=finite(magnetometerSensor.y)?magnetometerSensor.y:null;
+   cur.magZ=finite(magnetometerSensor.z)?magnetometerSensor.z:null;
+   cur.magTs=finite(magnetometerSensor.timestamp)?magnetometerSensor.timestamp:performance.now();
+   cur.magError="";
+   txt("magStatus","取得中");
+   renderMagnetometer();
+  });
+  magnetometerSensor.addEventListener("error",e=>{
+   cur.magError=(e.error?.name||"Error")+": "+(e.error?.message||"");
+   txt("magStatus",cur.magError);
+  });
+  magnetometerSensor.start();
+ }catch(e){
+  cur.magError=(e.name||"Error")+": "+(e.message||"");
+  txt("magStatus",cur.magError);
+ }
+ try{
+  if("AbsoluteOrientationSensor" in window){
+   absoluteOrientationSensor=new AbsoluteOrientationSensor({frequency:60,referenceFrame:"device"});
+   absoluteOrientationSensor.addEventListener("reading",()=>{cur.absQuat=absoluteOrientationSensor.quaternion?Array.from(absoluteOrientationSensor.quaternion):null;cur.absOriTs=absoluteOrientationSensor.timestamp||performance.now();cur.absOriError="";renderMagnetometer()});
+   absoluteOrientationSensor.addEventListener("error",e=>{cur.absOriError=(e.error?.name||"Error")+": "+(e.error?.message||"");renderMagnetometer()});
+   absoluteOrientationSensor.start();
+  }
+ }catch(e){cur.absOriError=(e.name||"Error")+": "+(e.message||"")}
+ try{
+  if("RelativeOrientationSensor" in window){
+   relativeOrientationSensor=new RelativeOrientationSensor({frequency:60,referenceFrame:"device"});
+   relativeOrientationSensor.addEventListener("reading",()=>{cur.relQuat=relativeOrientationSensor.quaternion?Array.from(relativeOrientationSensor.quaternion):null;cur.relOriTs=relativeOrientationSensor.timestamp||performance.now();cur.relOriError="";renderMagnetometer()});
+   relativeOrientationSensor.addEventListener("error",e=>{cur.relOriError=(e.error?.name||"Error")+": "+(e.error?.message||"");renderMagnetometer()});
+   relativeOrientationSensor.start();
+  }
+ }catch(e){cur.relOriError=(e.name||"Error")+": "+(e.message||"")}
+}
+function renderMagnetometer(){
+ const vals=[cur.magX,cur.magY,cur.magZ];
+ txt("magXYZ",vals.every(finite)?vals.map(v=>v.toFixed(2)).join(" / "):"--");
+ const bm=vals.every(finite)?Math.hypot(...vals):null;
+ txt("magMagnitude",finite(bm)?bm.toFixed(2):"--");
+ txt("magOsHeading",finite(cur.rawHeading)?cur.rawHeading.toFixed(1)+"°":"--");
+ const p=primary3d();
+ txt("magHeadingDelta",p&&finite(p.heading)&&finite(cur.rawHeading)?(cd(p.heading,cur.rawHeading)>=0?"+":"")+cd(p.heading,cur.rawHeading).toFixed(1)+"°":"--");
+ txt("magHorizontalStrength",p&&finite(p.horizontal)?p.horizontal.toFixed(4):"--");txt("gravityTiltDisplay",finite(elevation360Value())?elevation360Value().toFixed(2)+"°":"--");
+ txt("magJump",finite(cur.last3dJump)?(cur.last3dJump>=0?"+":"")+cur.last3dJump.toFixed(1)+"°":"--");
+ txt("magPermission",cur.magPermission||"--");
+ txt("absQuat",cur.absQuat?cur.absQuat.map(v=>Number(v).toFixed(4)).join(" / "):(cur.absOriError||"非対応/未取得"));
+ txt("relQuat",cur.relQuat?cur.relQuat.map(v=>Number(v).toFixed(4)).join(" / "):(cur.relOriError||"非対応/未取得"));
+ txt("absEventAlpha",finite(cur.absAlpha)?cur.absAlpha.toFixed(2)+"°":"--");
+ txt("oriAbsolute",cur.absolute===true?"true":cur.absolute===false?"false":"--");
+}
+
+async function startAll(){
+ try{
+  if(!window.isSecureContext)throw Error("HTTPSで開いてください");
+  if(typeof DeviceOrientationEvent!=="undefined"&&typeof DeviceOrientationEvent.requestPermission==="function"){if(await DeviceOrientationEvent.requestPermission()!=="granted")throw Error("方向センサーが許可されませんでした")}
+  if(typeof DeviceMotionEvent!=="undefined"&&typeof DeviceMotionEvent.requestPermission==="function"){if(await DeviceMotionEvent.requestPermission()!=="granted")throw Error("動きセンサーが許可されませんでした")}
+  sensorOK=true;startSensors();startGeo();startMagnetometer();await startCamera();
+  txt("sensorStatus","センサー取得中");$("sensorStatus").className="status ok";$("help").classList.add("hidden")
+ }catch(e){txt("help","開始エラー: "+e.message);$("help").className="status bad"}
+}
+
+function startGeo(){
+ if(!navigator.geolocation)return;
+ if(watchId!==null)navigator.geolocation.clearWatch(watchId);
+ watchId=navigator.geolocation.watchPosition(p=>{
+  geo={lat:p.coords.latitude,lon:p.coords.longitude,alt:p.coords.altitude,accuracy:p.coords.accuracy,altAccuracy:p.coords.altitudeAccuracy,timestamp:p.timestamp};
+  txt("latlon",geo.lat.toFixed(6)+" / "+geo.lon.toFixed(6));
+  txt("gpsAltitude",finite(geo.alt)?geo.alt.toFixed(1)+" m":"取得不可");
+  txt("gpsAccuracy",finite(geo.accuracy)?"±"+geo.accuracy.toFixed(1)+" m":"--");
+  txt("altAccuracy",finite(geo.altAccuracy)?"±"+geo.altAccuracy.toFixed(1)+" m":"取得不可");
+ },e=>{txt("gpsAccuracy","位置情報エラー")},{enableHighAccuracy:true,maximumAge:0,timeout:15000})
+}
+
+async function startCamera(){
+ try{
+  if(!navigator.mediaDevices?.getUserMedia)return;
+  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
+  $("video").srcObject=stream;$("cameraBox").classList.remove("hidden")
+ }catch{}
+}
+
+
+// DeviceOrientation の intrinsic Z-X'-Y'' 回転から、背面カメラ光軸 (-Zdevice) を地球座標へ変換。
+// 地球座標は East(+X), North(+Y), Up(+Z) とする。
+function cameraVectorFromOrientation(alpha,beta,gamma){
+ if(![alpha,beta,gamma].every(finite))return null;
+ const a=alpha*rad,b=beta*rad,g=gamma*rad;
+ const ca=Math.cos(a),sa=Math.sin(a),cb=Math.cos(b),sb=Math.sin(b),cg=Math.cos(g),sg=Math.sin(g);
+ // R = Rz(alpha) * Rx(beta) * Ry(gamma)
+ // rear camera axis = - third column of R
+ let east=-(ca*sg + sa*sb*cg);
+ let north=-(sa*sg - ca*sb*cg);
+ let up=-(cb*cg);
+ const len=Math.hypot(east,north,up);
+ if(!len)return null;
+ east/=len;north/=len;up/=len;
+ const horizontal=Math.hypot(east,north);
+ const rawHeading=horizontal>1e-6?norm(Math.atan2(east,north)/rad):null;
+ const elevation=Math.asin(Math.max(-1,Math.min(1,up)))/rad;
+ return {east,north,up,horizontal,rawHeading,elevation};
+}
+function orientationTopHeadingFromAlpha(){
+ if(!finite(cur.a))return null;
+ return norm(360-cur.a+screenDeg());
+}
+function primary3d(){
+ const v=cur.camera3d;
+ if(!v)return null;
+ let heading=null;
+ if(headingCalibration.enabled&&finite(headingCalibration.orientationFrameOffset)&&finite(v.rawHeading)){
+  heading=norm(v.rawHeading+headingCalibration.orientationFrameOffset+headingCalibration.offset);
+ }
+ return {...v,heading};
+}
+function reconcileIphoneHeadingFlipState(){
+ const e=primaryElevation();
+ if(!finite(e))return;
+ let expected=null,reason="";
+ // 360°高度角では 360°付近は0°付近と同じ水平状態。
+ // 135°境界のすぐ近くは実測ジャンプを優先し、十分離れた安全域だけで状態を自己修復する。
+ if(e<=IOS_HEADING_RECOVERY_LOW_MAX || e>=360-IOS_HEADING_RECOVERY_LOW_MAX){
+  expected=false; reason="低高度側の安全域";
+ }else if(e>=IOS_HEADING_RECOVERY_HIGH_MIN && e<=180){
+  expected=true; reason="135°超え側の安全域";
+ }
+ if(expected!==null && iosHeadingFlipState.active!==expected){
+  iosHeadingFlipState.active=expected;
+  iosHeadingFlipState.recoveryCount++;
+  iosHeadingFlipState.lastRecoveryReason=reason+" @"+e.toFixed(1)+"°";
+ }
+}
+function updateIphoneHeadingFlipState(rawHeading){
+ if(!finite(rawHeading))return;
+ const prev=iosHeadingFlipState.prevRaw;
+ const e=primaryElevation();
+ if(finite(prev)&&finite(e)){
+  const jump=cd(rawHeading,prev);
+  const inWindow=e>=IOS_HEADING_JUMP_ELEVATION_MIN&&e<=IOS_HEADING_JUMP_ELEVATION_MAX;
+  if(inWindow&&Math.abs(jump)>=IOS_HEADING_JUMP_MIN_DEG){
+   iosHeadingFlipState.active=!iosHeadingFlipState.active;
+   iosHeadingFlipState.lastJump=jump;
+   iosHeadingFlipState.lastJumpElevation=e;
+   iosHeadingFlipState.toggleCount++;
+  }
+ }
+ iosHeadingFlipState.prevRaw=rawHeading;
+ reconcileIphoneHeadingFlipState();
+}
+function iphoneHeadingCorrected(){
+ if(!finite(cur.iosHeading))return null;
+ return iosHeadingFlipState.active?norm(cur.iosHeading+180):cur.iosHeading;
+}
+function iphoneHeadingCorrectionApplied(){
+ return finite(cur.iosHeading)&&iosHeadingFlipState.active;
+}
+function primaryHeading(){
+ const ih=iphoneHeadingCorrected();
+ if(finite(ih))return norm(ih+(headingCalibration.enabled?headingCalibration.offset:0));
+ return cur.heading;
+}
+let started=false;
+function startSensors(){
+ if(started)return;started=true;iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""};
+ const ori=e=>{
+  cur.a=finite(e.alpha)?e.alpha:null;cur.b=finite(e.beta)?e.beta:null;cur.g=finite(e.gamma)?e.gamma:null;cur.absolute=e.absolute===true;cur.oriTs=e.timeStamp;
+  cur.iosHeading=finite(e.webkitCompassHeading)?norm(e.webkitCompassHeading):null;cur.iosAccuracy=finite(e.webkitCompassAccuracy)?e.webkitCompassAccuracy:null;
+  if(finite(cur.iosHeading))updateIphoneHeadingFlipState(cur.iosHeading);
+  if(e.type==="deviceorientationabsolute"&&finite(e.alpha))cur.absAlpha=e.alpha;
+  const ang=screenDeg();
+  let rawHeading=null;if(finite(cur.iosHeading)){rawHeading=norm(cur.iosHeading+ang);cur.source="iPhoneコンパス"}
+  else if(e.absolute===true&&finite(e.alpha)){rawHeading=disableAlphaInversion?norm(e.alpha+ang):norm(360-e.alpha+ang);cur.source=disableAlphaInversion?"Android絶対方向値（反転無効）":"Android絶対方向値（360-alpha）"}
+  else if(finite(cur.absAlpha)){rawHeading=disableAlphaInversion?norm(cur.absAlpha+ang):norm(360-cur.absAlpha+ang);cur.source=disableAlphaInversion?"絶対方向イベント（反転無効）":"絶対方向イベント（360-alpha）"}
+  else{rawHeading=null;cur.source="北基準方位を確定できず"}
+  cur.rawHeading=rawHeading;cur.heading=finite(rawHeading)?norm(rawHeading+(headingCalibration.enabled?headingCalibration.offset:0)):null;
+  cur.camera3d=cameraVectorFromOrientation(cur.a,cur.b,cur.g);
+  if(cur.camera3d&&finite(cur.camera3d.rawHeading)){
+   if(finite(cur.prev3dHeading))cur.last3dJump=cd(cur.camera3d.rawHeading,cur.prev3dHeading);
+   cur.prev3dHeading=cur.camera3d.rawHeading;
+  }
+  if(finite(cur.b)&&finite(cur.g)){const vz=-Math.cos(cur.b*rad)*Math.cos(cur.g*rad);cur.elev=Math.max(-90,Math.min(90,Math.asin(vz)/rad))}
+  render();sample()
+ };
+ window.addEventListener("deviceorientation",ori,true);
+ window.addEventListener("deviceorientationabsolute",ori,true);
+ window.addEventListener("devicemotion",e=>{
+  const a=e.acceleration||{},g=e.accelerationIncludingGravity||{},r=e.rotationRate||{};
+  cur.ax=finite(a.x)?a.x:null;cur.ay=finite(a.y)?a.y:null;cur.az=finite(a.z)?a.z:null;
+  cur.gx=finite(g.x)?g.x:null;cur.gy=finite(g.y)?g.y:null;cur.gz=finite(g.z)?g.z:null;
+  cur.ra=finite(r.alpha)?r.alpha:null;cur.rb=finite(r.beta)?r.beta:null;cur.rg=finite(r.gamma)?r.gamma:null;
+  cur.motionInterval=finite(e.interval)?e.interval:null;cur.motTs=e.timeStamp;render();sample()
+ },true)
+}
+
+
+function updateHeadingCalibrationStatus(){
+ txt("headingOffsetDisplay",(headingCalibration.enabled?(headingCalibration.offset>=0?"+":"")+headingCalibration.offset.toFixed(1):"0.0")+"°");
+ txt("headingCalibrationStatus",headingCalibration.enabled?"北0°補正を適用中":"未補正");
+}
+function captureNorthCalibration(){
+ const compass=cur.rawHeading;
+ const alphaTop=orientationTopHeadingFromAlpha();
+ if(!finite(compass))return alert("コンパス方位がまだ取得できていません。");
+ if(!finite(alphaTop))return alert("端末姿勢 alpha がまだ取得できていません。");
+ const frameOffset=cd(compass,alphaTop);
+ const northOffset=cd(0,compass);
+ headingCalibration={offset:northOffset,enabled:true,rawAtNorth:compass,orientationFrameOffset:frameOffset};
+ persist();updateHeadingCalibrationStatus();render();
+}
+function clearNorthCalibration(){headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null};persist();updateHeadingCalibrationStatus();render()}
+function gravityVector(){return [cur.gx,cur.gy,cur.gz].every(finite)?[cur.gx,cur.gy,cur.gz]:null}
+function angleBetween(a,b){if(!a||!b)return null;const da=Math.hypot(...a),db=Math.hypot(...b);if(!da||!db)return null;const x=Math.max(-1,Math.min(1,a.reduce((s,v,i)=>s+v*b[i],0)/(da*db)));return Math.acos(x)/rad}
+function calibratedElevationValue(){const g=gravityVector();if(!g||!calibration.horizontal||!calibration.zenith)return null;const full=angleBetween(calibration.horizontal,calibration.zenith);const now=angleBetween(calibration.horizontal,g);if(!finite(full)||full<20||!finite(now))return null;return Math.max(0,Math.min(90,now/full*90))}
+function gravityTiltElevation(){
+ const g=gravityVector();
+ if(!g)return null;
+ const m=Math.hypot(...g);
+ if(!m)return null;
+ return Math.acos(Math.max(0,Math.min(1,Math.abs(g[2])/m)))/rad;
+}
+function screenGravityY(v){
+ if(!v)return null;
+ const a=screenDeg()*rad;
+ // device x/y を現在の画面向きへ回転し、画面上方向の重力成分を得る。
+ return v[0]*Math.sin(a)+v[1]*Math.cos(a);
+}
+function rawFullTiltFromGravity(v){
+ if(!v)return null;
+ const sy=screenGravityY(v),gz=v[2];
+ if(!finite(sy)||!finite(gz))return null;
+ // 「画面」は液晶面。液晶が上向き水平=0°、液晶が手前向き直角=90°、
+ // 液晶が下向き水平=180°、液晶が反対向き直角=270°、1周で360→0°。
+ return norm(Math.atan2(sy,gz)/rad);
+}
+function elevation360Value(){
+ const g=gravityVector();
+ if(!g)return null;
+ const raw=rawFullTiltFromGravity(g);
+ if(!finite(raw))return null;
+ // 基本定義は端末座標だけで直接出す:
+ // 画面上向き水平=0°, 手前向き直角=90°, 画面下向き水平=180°,
+ // 反対向き直角=270°, 一周で360°→0°。
+ // 水平校正がある場合だけ、その端末固有のゼロずれをオフセット補正する。
+ const hRaw=calibration.horizontal?rawFullTiltFromGravity(calibration.horizontal):null;
+ return finite(hRaw)?norm(raw-hRaw):raw;
+}
+function betaElevation360(){
+ if(!finite(cur.b))return null;
+ // DeviceOrientation beta は前後方向の回転で -180°〜180°。
+ // ユーザー定義に合わせて 0〜359°へ正規化すると、
+ // 液晶上向き水平=0、液晶手前向き直角=90、
+ // 液晶下向き水平=180、反対向き直角=-90→270 となる。
+ return norm(cur.b);
+}
+function primaryElevation(){
+ const be=betaElevation360();
+ if(finite(be))return be;
+ const ge=elevation360Value();
+ return finite(ge)?ge:null;
+}
+function updateCalibrationStatus(){const h=!!calibration.horizontal,z=!!calibration.zenith;const s=h&&z?"水平ゼロ補正・真上比較値とも登録済み":h?"水平ゼロ補正を適用中":z?"真上比較値のみ登録済み":"校正なしでも360°表示可能";txt("calibrationStatus",s);txt("topElevationCalStatus",h?"水平0°補正済み":"補正なし")}
+function captureGravity(which){const g=gravityVector();if(!g)return alert("重力データがまだ取得できていません。センサー開始後、静止してから押してください。");calibration[which]=g.slice();persist();updateCalibrationStatus();render()}
+function render(){
+ const ph=primaryHeading(),p3=primary3d();
+ txt("heading",finite(ph)?ph.toFixed(1)+"°":"--");txt("headingDir",finite(ph)?dir(ph)+"方向（北0 / 東90 / 南180 / 西270） / 主値=OS方位":"北基準方位なし");txt("rawHeadingDisplay",finite(cur.rawHeading)?cur.rawHeading.toFixed(1)+"°":"--");txt("calHeadingDisplay",finite(ph)?ph.toFixed(1)+"°":"--");
+ const pe=primaryElevation();txt("elevation",finite(pe)?pe.toFixed(1)+"°":"--");txt("elevationSource",finite(betaElevation360())?"DeviceOrientation beta：連続0〜359°":finite(pe)?"重力atan2フォールバック":"姿勢センサー待ち");
+ txt("camera3dHeading",p3&&finite(p3.heading)?p3.heading.toFixed(1)+"°":(p3?"北基準未校正":"--"));txt("camera3dElevation",p3&&finite(p3.elevation)?p3.elevation.toFixed(1)+"°":"--");txt("camera3dVector",p3?[p3.east,p3.north,p3.up].map(v=>v.toFixed(3)).join(" / "):"--");txt("camera3dReliability",p3?(!headingCalibration.enabled||!finite(headingCalibration.orientationFrameOffset)?"北基準未校正":p3.horizontal<0.18?"天頂付近：方位低信頼":p3.horizontal<0.35?"高高度：方位注意":"通常"):"--");
+ txt("rawOri",[cur.a,cur.b,cur.g].map(v=>fmt(v,1)).join(" / "));
+ txt("gravity",[cur.gx,cur.gy,cur.gz].map(v=>fmt(v,2)).join(" / ")+" m/s²");
+ txt("accel",[cur.ax,cur.ay,cur.az].map(v=>fmt(v,2)).join(" / ")+" m/s²");
+ txt("rotation",[cur.ra,cur.rb,cur.rg].map(v=>fmt(v,2)).join(" / ")+" °/s");
+ txt("headingSource",finite(cur.iosHeading)?"iPhoneコンパス + 180°ジャンプ検知補正（試験）":cur.source);txt("compassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");
+ txt("alphaRawDisplay",finite(cur.a)?cur.a.toFixed(1)+"°":"--");
+ txt("alphaDirectDisplay",finite(cur.a)?norm(cur.a+screenDeg()).toFixed(1)+"°":"--");
+ txt("alphaInvertedDisplay",finite(cur.a)?norm(360-cur.a+screenDeg()).toFixed(1)+"°":"--");
+ txt("alphaModeDisplay",finite(cur.iosHeading)?"iPhone: webkitCompassHeading":(disableAlphaInversion?"反転無効: alpha":"標準: 360-alpha"));
+ txt("iosHeadingRawDisplay",finite(cur.iosHeading)?cur.iosHeading.toFixed(1)+"°":"--");
+ txt("iosHeadingInvertedDisplay",finite(cur.iosHeading)?norm(360-cur.iosHeading).toFixed(1)+"°":"--");
+ txt("iosAlphaRawDisplay",finite(cur.a)?cur.a.toFixed(1)+"°":"--");
+ txt("iosAlphaInvertedDisplay",finite(cur.a)?norm(360-cur.a).toFixed(1)+"°":"--");
+ txt("iosHeadingVsAlphaDisplay",finite(cur.iosHeading)&&finite(cur.a)?(cd(cur.iosHeading,norm(360-cur.a))>=0?"+":"")+cd(cur.iosHeading,norm(360-cur.a)).toFixed(1)+"°":"--");
+ txt("iosElevationDisplay",finite(primaryElevation())?primaryElevation().toFixed(1)+"°":"--");
+ txt("iosHeadingCorrectedDisplay",finite(iphoneHeadingCorrected())?iphoneHeadingCorrected().toFixed(1)+"°":"--");
+ txt("iosHeadingCorrectionDisplay",finite(cur.iosHeading)?(iphoneHeadingCorrectionApplied()?"ON（反転状態）":"OFF（通常状態）")+" / 復旧"+iosHeadingFlipState.recoveryCount+"回":"--");
+ txt("recordLiveElevation",finite(primaryElevation())?primaryElevation().toFixed(1)+"°":"--");
+ txt("recordLiveHeading",finite(primaryHeading())?primaryHeading().toFixed(1)+"°":"--");
+ txt("recordElevationNearButton",finite(primaryElevation())?primaryElevation().toFixed(1)+"°":"--");
+ txt("recordHeadingNearButton",finite(primaryHeading())?primaryHeading().toFixed(1)+"°":"--");
+ txt("recordIosHeading",finite(cur.iosHeading)?cur.iosHeading.toFixed(1)+"°":"--");
+ txt("recordIosHeadingCorrected",finite(iphoneHeadingCorrected())?iphoneHeadingCorrected().toFixed(1)+"°":"--");
+ txt("recordIosCorrectionState",finite(cur.iosHeading)?(iphoneHeadingCorrectionApplied()?"ON":"OFF")+" / 切替"+iosHeadingFlipState.toggleCount+"回 / 自動復旧"+iosHeadingFlipState.recoveryCount+"回":"--");
+ txt("recordAlpha",finite(cur.a)?cur.a.toFixed(1)+"°":"--");
+ txt("recordAlphaInv",finite(cur.a)?norm(360-cur.a).toFixed(1)+"°":"--");
+ const rp3=primary3d();txt("record3dHeading",rp3&&finite(rp3.heading)?rp3.heading.toFixed(1)+"°":"--");txt("recordBetaElevation",finite(cur.b)?cur.b.toFixed(1)+"° / "+betaElevation360().toFixed(1)+"°":"--");
+ txt("quickSensorState",sensorOK?"取得中":"未開始");
+ txt("quickCompassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");
+ const ce=elevation360Value();txt("calibratedElevation",finite(ce)?ce.toFixed(1)+"°":"--");renderMagnetometer();
+ updateReference();updateGuided();updateFocus();if(currentMode==="solar")updateSolarEstimate()
+}
+
+function errorState(v){v=Math.abs(v);return v<=3?["ok","良好"]:v<=8?["warn","注意"]:["bad","大きな差"]}
+function updateReference(){
+ const th=parseFloat($("targetHeading").value),te=parseFloat($("targetElevation").value);
+ const ce=primaryElevation(),ph=primaryHeading(),he=finite(ph)&&finite(th)?cd(ph,th):null,ee=finite(ce)&&finite(te)?ce-te:null;
+ txt("headingError",finite(he)?(he>=0?"+":"")+he.toFixed(1)+"°":"--");txt("elevationError",finite(ee)?(ee>=0?"+":"")+ee.toFixed(1)+"°":"--");
+ if(finite(he)&&finite(ee)){const worst=Math.max(Math.abs(he),Math.abs(ee)),s=errorState(worst);$("referenceVerdict").className="status "+s[0];txt("referenceVerdict",s[1]+"：最大差 "+worst.toFixed(1)+"°")}
+}
+function renderScenario(){const s=scenarios[scenarioIndex];txt("guidedInstruction",s.name);txt("guidedTargetHeading",s.h+"°");txt("guidedTargetElevation",s.e+"°")}
+function updateGuided(){const s=scenarios[scenarioIndex],ce=primaryElevation(),ph=primaryHeading(),he=finite(ph)?cd(ph,s.h):null,ee=finite(ce)?ce-s.e:null;txt("guidedMeasuredHeading",finite(ph)?ph.toFixed(1)+"°":"--");txt("guidedMeasuredElevation",finite(ce)?ce.toFixed(1)+"°":"未校正");txt("guidedHeadingError",finite(he)?(he>=0?"+":"")+he.toFixed(1)+"°":"--");txt("guidedElevationError",finite(ee)?(ee>=0?"+":"")+ee.toFixed(1)+"°":"--");if(finite(he)&&finite(ee)){const w=Math.max(Math.abs(he),Math.abs(ee)),st=errorState(w);$("guidedVerdict").className="status "+st[0];txt("guidedVerdict",st[1]+"：最大差 "+w.toFixed(1)+"°")}}
+$("prevScenario").onclick=()=>{scenarioIndex=(scenarioIndex-1+scenarios.length)%scenarios.length;renderScenario();saveForm()};
+$("nextScenario").onclick=()=>{scenarioIndex=(scenarioIndex+1)%scenarios.length;renderScenario();saveForm()};
+
+function dayOfYear(d){const s=new Date(d.getFullYear(),0,0);return Math.floor((d-s)/86400000)}
+function solarDeclinationAndEot(d){const n=dayOfYear(d),B=2*Math.PI*(n-81)/364;return{dec:23.45*Math.sin(2*Math.PI*(284+n)/365)*rad,eot:9.87*Math.sin(2*B)-7.53*Math.cos(B)-1.5*Math.sin(B)}}
+function solarHourAngleFromPosition(altitudeRad, latitudeRad, declinationRad, azimuthDeg){
+ // 方位角は「北=0°, 東=90°, 南=180°, 西=270°」を前提。
+ // 高度角から |H| を求め、太陽が南中線の東側/西側にあるかを
+ // 方位角から判定して、時角 H の正負まで自動決定する。
+ const cosLat=Math.cos(latitudeRad), cosDec=Math.cos(declinationRad);
+ if(Math.abs(cosLat*cosDec)<1e-10) return null;
+ const cosH=(Math.sin(altitudeRad)-Math.sin(latitudeRad)*Math.sin(declinationRad))/(cosLat*cosDec);
+ if(cosH < -1.000001 || cosH > 1.000001) return null;
+ const c=Math.max(-1,Math.min(1,cosH));
+ const az=norm(azimuthDeg)*rad;
+ // 標準方位角から sin(H) を復元。
+ // 東側では H<0（午前）、西側では H>0（午後）。
+ const sinH=-Math.sin(az)*Math.cos(altitudeRad)/cosDec;
+ let H=Math.atan2(sinH,c);
+ // atan2の微小な丸め誤差で南中付近だけ符号が揺れないようにする。
+ if(Math.abs(H)<0.5*rad) H=0;
+ return {deg:H/rad, cosH:c, sinH, side:Math.abs(H)<0.5*rad?'南中付近':(H<0?'太陽は東側':'太陽は西側'), period:Math.abs(H)<0.5*rad?'南中':(H<0?'午前':'午後')};
+}
+
+function updateSolarEstimate(){
+ const ce=primaryElevation();
+ const ph=primaryHeading();
+ if(!finite(geo.lat)||!finite(geo.lon)||!finite(ce)||!finite(ph)){
+  txt("estimatedTime","位置/高度角/方位角待ち");txt("estimatedTimeInline","待機");txt("timeError","--");txt("timeErrorInline","--");txt("timeVerdict","--");txt("hourAngleSign","--");txt("amPm判定","--");return;
+ }
+ const now=new Date(),lat=geo.lat*rad,h=ce*rad,{dec,eot}=solarDeclinationAndEot(now);
+ const ha=solarHourAngleFromPosition(h,lat,dec,ph);
+ if(!ha){txt("estimatedTime","計算範囲外");txt("estimatedTimeInline","計算範囲外");txt("timeError","--");txt("timeErrorInline","--");txt("timeVerdict","--");txt("hourAngleSign","--");txt("amPm判定","--");return;}
+ const H=ha.deg;
+ const solarHours=12+H/15;
+ const jstHours=solarHours-(4*(geo.lon-135)+eot)/60;
+ const hh=((Math.floor(jstHours)%24)+24)%24;
+ const mmRaw=(jstHours-Math.floor(jstHours))*60;
+ const mm=Math.round(mmRaw);
+ const hhDisplay=String((hh+(mm===60?1:0))%24).padStart(2,"0");
+ const est=hhDisplay+":"+String(mm%60).padStart(2,"0");
+ const estMin=hh*60+(mm===60?0:mm),actualMin=now.getHours()*60+now.getMinutes(),diff=((estMin-actualMin+720)%1440)-720;
+ const terr=(diff>=0?"+":"")+diff+"分";
+ txt("estimatedTime",est);txt("estimatedTimeInline",est);
+ txt("timeError",terr);txt("timeErrorInline",terr);
+ txt("hourAngleSign",(H<0?"H < 0°（午前）":H>0?"H > 0°（午後）":"H = 0°（南中）"));
+ txt("amPm判定",ha.period);
+ const sideMsg=H<0?"太陽は南中線より東側 → 時角を負":H>0?"太陽は南中線より西側 → 時角を正":"南中付近 → 時角0°として扱う";
+ txt("timeVerdict",sideMsg+" / "+(Math.abs(diff)<=10?"参考上は近い":Math.abs(diff)<=30?"差あり":"大きな差"));
+}
+function makeRow(){
+ const now=new Date(),h=parseFloat($("height").value)||0,R=6371000,dip=Math.sqrt(2*Math.max(0,h)/R)/rad;
+ const s=scenarios[scenarioIndex],th=parseFloat($("targetHeading").value),te=parseFloat($("targetElevation").value);
+ return{
+  session_id:currentSession,measurement_condition_id:$("testConditionId").value.trim(),local_time:local(now),iso_time:now.toISOString(),epoch_ms:now.getTime(),validation_mode:currentMode,
+  device_name:$("deviceId").value,os_detected:os,user_agent:ua,place_type:$("place").value,phone_height_from_ground_m:h,measurement_condition:$("condition").value,notes:$("notes").value,
+  latitude:geo.lat,longitude:geo.lon,gps_altitude_m:geo.alt,gps_horizontal_accuracy_m:geo.accuracy,gps_altitude_accuracy_m:geo.altAccuracy,gps_timestamp_ms:geo.timestamp,
+  raw_heading_deg:cur.rawHeading,legacy_corrected_heading_deg:cur.heading,north_zero_heading_deg:primaryHeading(),heading_calibration_enabled:headingCalibration.enabled,heading_calibration_offset_deg:headingCalibration.offset,orientation_frame_offset_deg:headingCalibration.orientationFrameOffset,orientation_top_heading_from_alpha_deg:orientationTopHeadingFromAlpha(),heading_raw_at_north_deg:headingCalibration.rawAtNorth,heading_source:cur.source,alpha_inversion_disabled:disableAlphaInversion,alpha_direct_heading_deg:finite(cur.a)?norm(cur.a+screenDeg()):null,alpha_inverted_heading_deg:finite(cur.a)?norm(360-cur.a+screenDeg()):null,orientation_alpha_deg:cur.a,orientation_beta_deg:cur.b,orientation_gamma_deg:cur.g,orientation_absolute:cur.absolute,absolute_event_alpha_deg:cur.absAlpha,screen_orientation_angle_deg_live:screenDeg(),camera3d_east:cur.camera3d?cur.camera3d.east:null,camera3d_north:cur.camera3d?cur.camera3d.north:null,camera3d_up:cur.camera3d?cur.camera3d.up:null,
+  camera3d_east_sign:cur.camera3d?Math.sign(cur.camera3d.east):null,camera3d_north_sign:cur.camera3d?Math.sign(cur.camera3d.north):null,camera3d_up_sign:cur.camera3d?Math.sign(cur.camera3d.up):null,camera3d_horizontal_strength:cur.camera3d?cur.camera3d.horizontal:null,camera3d_raw_heading_deg:cur.camera3d?cur.camera3d.rawHeading:null,camera3d_heading_deg:primary3d()?primary3d().heading:null,camera3d_elevation_deg:cur.camera3d?cur.camera3d.elevation:null,camera3d_heading_low_confidence:cur.camera3d?cur.camera3d.horizontal<0.18:null,
+  magnetometer_x:cur.magX,magnetometer_y:cur.magY,magnetometer_z:cur.magZ,
+  magnetometer_magnitude:[cur.magX,cur.magY,cur.magZ].every(finite)?Math.hypot(cur.magX,cur.magY,cur.magZ):null,
+  magnetometer_timestamp:cur.magTs,magnetometer_error:cur.magError,magnetometer_permission:cur.magPermission,
+  absolute_orientation_quaternion:cur.absQuat?cur.absQuat.join("|"):"",absolute_orientation_timestamp:cur.absOriTs,absolute_orientation_error:cur.absOriError,
+  relative_orientation_quaternion:cur.relQuat?cur.relQuat.join("|"):"",relative_orientation_timestamp:cur.relOriTs,relative_orientation_error:cur.relOriError,
+  primary_heading_source:finite(cur.iosHeading)?"ios_webkit_compass_jump_toggle_correction":"os_heading_only",primary_elevation_source:"deviceorientation_beta_normalized_360",beta_elevation_360_deg:betaElevation360(),gravity_tilt_elevation_deg:gravityTiltElevation(),gravity_full_tilt_raw_deg:rawFullTiltFromGravity(gravityVector()),gravity_elevation_360_deg:elevation360Value(),iphone_heading_diagnostic_mode:true,
+  os_vs_3d_heading_delta_deg:(primary3d()&&finite(primary3d().heading)&&finite(cur.rawHeading))?cd(primary3d().heading,cur.rawHeading):null,
+  camera3d_step_jump_deg:cur.last3dJump,
+  webkit_compass_heading_deg:cur.iosHeading,webkit_compass_heading_inverted_deg:finite(cur.iosHeading)?norm(360-cur.iosHeading):null,webkit_compass_heading_jump_corrected_deg:iphoneHeadingCorrected(),webkit_compass_heading_correction_applied:iphoneHeadingCorrectionApplied(),webkit_compass_heading_last_jump_deg:iosHeadingFlipState.lastJump,webkit_compass_heading_last_jump_elevation_deg:iosHeadingFlipState.lastJumpElevation,webkit_compass_heading_toggle_count:iosHeadingFlipState.toggleCount,webkit_compass_heading_recovery_count:iosHeadingFlipState.recoveryCount,webkit_compass_heading_last_recovery_reason:iosHeadingFlipState.lastRecoveryReason,webkit_compass_heading_jump_min_deg:IOS_HEADING_JUMP_MIN_DEG,webkit_compass_heading_jump_elevation_min_deg:IOS_HEADING_JUMP_ELEVATION_MIN,webkit_compass_heading_jump_elevation_max_deg:IOS_HEADING_JUMP_ELEVATION_MAX,webkit_compass_accuracy_deg:cur.iosAccuracy,
+  ios_alpha_raw_deg:cur.a,ios_alpha_inverted_deg:finite(cur.a)?norm(360-cur.a):null,
+  ios_compass_vs_inverted_alpha_delta_deg:(finite(cur.iosHeading)&&finite(cur.a))?cd(cur.iosHeading,norm(360-cur.a)):null,
+  ios_beta_deg:cur.b,ios_gamma_deg:cur.g,ios_primary_elevation_deg:primaryElevation(),
+  legacy_elevation_candidate_deg:cur.elev,gravity_calibrated_elevation_deg:calibratedElevationValue(),calibrated_elevation_deg:primaryElevation(),calibration_horizontal_gravity:calibration.horizontal?calibration.horizontal.join("|"):"",calibration_zenith_gravity:calibration.zenith?calibration.zenith.join("|"):"",
+  acceleration_x_mps2:cur.ax,acceleration_y_mps2:cur.ay,acceleration_z_mps2:cur.az,gravity_accel_x_mps2:cur.gx,gravity_accel_y_mps2:cur.gy,gravity_accel_z_mps2:cur.gz,
+  rotation_alpha_dps:cur.ra,rotation_beta_dps:cur.rb,rotation_gamma_dps:cur.rg,motion_interval_ms:cur.motionInterval,orientation_event_timestamp_ms:cur.oriTs,motion_event_timestamp_ms:cur.motTs,
+  reference_heading_deg:currentMode==="reference"?th:null,reference_elevation_deg:currentMode==="reference"?te:null,
+  guided_instruction:currentMode==="guided"?s.name:"",guided_target_heading_deg:currentMode==="guided"?s.h:null,guided_target_elevation_deg:currentMode==="guided"?s.e:null,
+  horizon_dip_deg:dip,screen_orientation_angle_deg:screenDeg(),device_pixel_ratio:devicePixelRatio,screen_width:screen.width,screen_height:screen.height
+ }
+}
+function sample(force=false){
+ if(!recording)return;
+ const n=performance.now();
+ if(!force&&n-lastSample<20)return;
+ lastSample=n;
+ session.push({...makeRow(),perf_ms:n});
+ if(session.length%20===0)saveRecordState().catch(storageError);
+}
+
+function mean(a){a=a.filter(finite);return a.length?a.reduce((s,v)=>s+v,0)/a.length:null}
+function sd(a){a=a.filter(finite);if(a.length<2)return null;const m=mean(a);return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/(a.length-1))}
+function cmean(a){a=a.filter(finite);if(!a.length)return null;return norm(Math.atan2(mean(a.map(v=>Math.sin(v*rad))),mean(a.map(v=>Math.cos(v*rad))))/rad)}
+function diagnose(rows){
+ const hs=rows.map(r=>r.north_zero_heading_deg),es=rows.map(r=>r.calibrated_elevation_deg),hm=cmean(hs);
+ const hsd=finite(hm)?sd(hs.filter(finite).map(v=>cd(v,hm))):null,esd=sd(es);
+ const motion=rows.map(r=>Math.sqrt((r.rotation_alpha_dps||0)**2+(r.rotation_beta_dps||0)**2+(r.rotation_gamma_dps||0)**2)),rms=mean(motion);
+ const accs=rows.map(r=>r.webkit_compass_accuracy_deg).filter(finite),ca=mean(accs);
+ const ts=rows.map(r=>r.perf_ms),ints=ts.slice(1).map((t,i)=>t-ts[i]),mx=ints.length?Math.max(...ints):null,av=mean(ints);
+ txt("avgInterval",finite(av)?av.toFixed(1)+" ms":"--");txt("maxInterval",finite(mx)?mx.toFixed(1)+" ms":"--");
+ if(finite(hsd)){if(hsd<=1)setPill("diagHeading","ok",hsd.toFixed(2)+"° 安定");else if(hsd<=3)setPill("diagHeading","warn",hsd.toFixed(2)+"° 注意");else setPill("diagHeading","bad",hsd.toFixed(2)+"° 不安定")}else setPill("diagHeading","bad","方位なし");
+ if(finite(esd)){if(esd<=1)setPill("diagElevation","ok",esd.toFixed(2)+"° 安定");else if(esd<=3)setPill("diagElevation","warn",esd.toFixed(2)+"° 注意");else setPill("diagElevation","bad",esd.toFixed(2)+"° 不安定")}else setPill("diagElevation","bad","高度なし");
+ if(finite(rms)){if(rms<=5)setPill("diagMotion","ok","動き小");else if(rms<=15)setPill("diagMotion","warn","少し動いた");else setPill("diagMotion","bad","動き大")}else setPill("diagMotion","warn","取得不可");
+ if(finite(ca)){if(ca<=10)setPill("diagCompass","ok","±"+ca.toFixed(1)+"°");else if(ca<=20)setPill("diagCompass","warn","±"+ca.toFixed(1)+"°");else setPill("diagCompass","bad","±"+ca.toFixed(1)+"°")}else setPill("diagCompass","warn","取得不可");
+ if(finite(mx)){if(mx<=150)setPill("diagGap","ok","大きな欠損なし");else if(mx<=1000)setPill("diagGap","warn",mx.toFixed(0)+"ms");else setPill("diagGap","bad",(mx/1000).toFixed(1)+"秒欠損")}else setPill("diagGap","warn","判定不可");
+ const issues=[];if(finite(hsd)&&hsd>3)issues.push("方位が不安定");if(finite(esd)&&esd>3)issues.push("高度角が不安定");if(finite(ca)&&ca>20)issues.push("コンパス精度が低い");if(finite(mx)&&mx>1000)issues.push("記録欠損あり");
+ $("overall").className="status "+(issues.length?"warn":"ok");txt("overall",issues.length?"要確認："+issues.join(" / "):"この10秒間は大きな異常を検出しませんでした。絶対的な正確さは正解値比較で確認してください。")
+}
+
+function startRecord(){
+ if(!sensorOK)return alert("先に利用開始してください");
+ if(recording)return;
+ session=[];recording=true;$("cardRecord").classList.add("recording-active");lastSample=0;if(recordSampleTimer)clearInterval(recordSampleTimer);recordSampleTimer=setInterval(()=>sample(true),50);sample(true);currentSession=($("deviceId").value||"device")+"_"+($("testConditionId").value.trim()||"no-condition")+"_"+new Date().toISOString().replace(/[:.]/g,"-");
+ let s=10;txt("recordStatus","記録中…10秒");txt("recordMotionGuide","測定中：高度角を見ながら一定速度でゆっくり傾けてください。");
+ const t=setInterval(()=>{s--;txt("recordStatus","記録中…"+s+"秒 / "+session.length+"件");txt("count",session.length);txt("recordMotionGuide","測定中：残り"+s+"秒 / 高度 "+(finite(primaryElevation())?primaryElevation().toFixed(1)+"°":"--")+" / 方位 "+(finite(primaryHeading())?primaryHeading().toFixed(1)+"°":"--"));if(s<=0){clearInterval(t);if(recordSampleTimer){clearInterval(recordSampleTimer);recordSampleTimer=null}sample(true);recording=false;$("cardRecord").classList.remove("recording-active");all.push(...session);txt("count",session.length);diagnose(session);session=[];txt("recordStatus","保存中…");$("recordStatus").className="status";saveRecordState().then(()=>{txt("savedCount",all.length);txt("recordStatus","完了：端末内に合計 "+all.length+" 件保存");$("recordStatus").className="status ok"}).catch(storageError);txt("recordMotionGuide","測定完了。必要なら同じ動作を2〜3回繰り返してください。")}},1000)
+}
+
+function csvText(){const rows=all.concat(session);if(!rows.length)return"";const keys=Array.from(new Set(rows.flatMap(Object.keys))).filter(k=>k!=="perf_ms"),esc=v=>'"'+String(v??"").replaceAll('"','""')+'"';return[keys.join(","),...rows.map(r=>keys.map(k=>esc(r[k])).join(","))].join("\n")}
+function csvFile(){return new File(["\ufeff"+csvText()],`solarwatch_${($("deviceId").value||"device")}_${Date.now()}.csv`,{type:"text/csv;charset=utf-8"})}
+async function shareCsv(){if(!all.length&&!session.length)return alert("データがありません");const f=csvFile();try{if(navigator.share&&navigator.canShare?.({files:[f]}))await navigator.share({title:"太陽ウォッチ センサー検証",files:[f]});else downloadCsv()}catch(e){if(e.name!=="AbortError")downloadCsv()}}
+function downloadCsv(){const t=csvText();if(!t)return alert("データがありません");const a=document.createElement("a"),b=new Blob(["\ufeff"+t],{type:"text/csv;charset=utf-8"});a.href=URL.createObjectURL(b);a.download=`solarwatch_${Date.now()}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function previewCsv(){const t=csvText();if(!t)return alert("データがありません");const l=t.split("\n");$("csvPreview").textContent=l.slice(0,21).join("\n")+(l.length>21?"\n…ほか "+(l.length-21)+" 行":"");$("csvPreview").classList.remove("hidden")}
+
+for(const id of ["deviceId","place","height","condition","notes","targetHeading","targetElevation"]){$(id).addEventListener("input",saveForm);$(id).addEventListener("change",saveForm)}
+$("disableAlphaInversion").onchange=()=>{disableAlphaInversion=$("disableAlphaInversion").checked;localStorage.setItem(HCFG,JSON.stringify({disableAlphaInversion}));render()};
+$("startAll").onclick=startAll;$("calNorth").onclick=captureNorthCalibration;$("clearHeadingCal").onclick=clearNorthCalibration;$("calHorizontal").onclick=()=>captureGravity("horizontal");$("calZenith").onclick=()=>captureGravity("zenith");$("record").onclick=startRecord;$("shareCsv").onclick=shareCsv;$("downloadCsv").onclick=downloadCsv;$("previewCsv").onclick=previewCsv;
+$("clear").onclick=()=>{if(!confirm("保存データをすべて削除しますか？"))return;all=[];session=[];clearRecordState();txt("savedCount","0");txt("count","0");txt("recordStatus","保存データを削除しました");$("csvPreview").classList.add("hidden")};
+window.addEventListener("pagehide",persist);document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")persist()});
+arrangeLayout();restore().finally(()=>{$("disableAlphaInversion").checked=disableAlphaInversion;renderScenario();updateHeadingCalibrationStatus();updateCalibrationStatus();updateFocus()});env();renderScenario();updateHeadingCalibrationStatus();updateCalibrationStatus();updateFocus();
+})();
+</script>
+</body>
+</html>
