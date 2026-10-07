@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-  <title>太陽ウォッチ センサー検証 v24 読み込み中</title>
+  <title>太陽ウォッチ センサー検証 v25 読み込み中</title>
   <style>
     body{margin:0;background:#f6f7f8;color:#222;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
     .loading{max-width:720px;margin:40px auto;padding:20px}
@@ -12,7 +12,7 @@
   </style>
 </head>
 <body>
-  <div class="loading"><div class="card" id="status">Android 3D方位 v24 を読み込んでいます…</div></div>
+  <div class="loading"><div class="card" id="status">Android 3D方位 v25 を読み込んでいます…</div></div>
   <script>
     (async () => {
       const status = document.getElementById('status');
@@ -29,19 +29,19 @@
 
         replaceOnce(
           '<title>太陽ウォッチ センサー検証 v22-ios-heading-parity-recovery</title>',
-          '<title>太陽ウォッチ センサー検証 v24-android-event-separation</title>',
+          '<title>太陽ウォッチ センサー検証 v25-android-horizontal-anchor</title>',
           'title'
         );
 
         replaceOnce(
           '📡 センサー検証プロトタイプ v22-ios-heading-parity-recovery',
-          '📡 センサー検証プロトタイプ v24-android-event-separation',
+          '📡 センサー検証プロトタイプ v25-android-horizontal-anchor',
           'heading'
         );
 
         replaceOnce(
           'let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""}; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true;',
-          'let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""}; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true; let android3dHeadingState={offset:null,lastHeading:null,anchorCount:0}; let androidOrientationDebug={poseEventType:"",absoluteEventTs:null,lastMotionTs:null,motionHoldUntil:0};',
+          'let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""}; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true; let android3dHeadingState={offset:null,lastHeading:null,anchorCount:0,anchorLocked:false,anchorAbsoluteHeading:null,lastAxis:"",lastRawHeading:null,lastHorizontal:null}; let androidOrientationDebug={poseEventType:"",absoluteEventTs:null,lastMotionTs:null,motionHoldUntil:0};',
           'android state'
         );
 
@@ -51,24 +51,62 @@
  if(finite(ih))return norm(ih+(headingCalibration.enabled?headingCalibration.offset:0));
  return cur.heading;
 }`,
-`function updateAndroid3dHeadingAnchor(){
- if(os!=="Android"||!cur.camera3d||!finite(cur.camera3d.rawHeading)||!finite(cur.b)||!finite(cur.absAlpha))return;
- const b=norm(cur.b), horizontal=cur.camera3d.horizontal;
- // 90°近傍ではEuler角表現が切り替わるため、北基準オフセットは低傾斜域だけで更新する。
- if(b>75||horizontal<0.5)return;
- // 激しく動かした直後はAndroid側の方位推定が収束途中になりやすいので、アンカー学習を止める。
+`function topVectorFromOrientation(alpha,beta,gamma){
+ if(![alpha,beta,gamma].every(finite))return null;
+ const a=alpha*rad,b=beta*rad;
+ const ca=Math.cos(a),sa=Math.sin(a),cb=Math.cos(b),sb=Math.sin(b);
+ // DeviceOrientation の Rz(alpha)*Rx(beta)*Ry(gamma) における +Ydevice。
+ // 水平時は端末上辺の向きになり、背面カメラ軸がほぼ鉛直でも方位を定義できる。
+ let east=-sa*cb;
+ let north=ca*cb;
+ let up=sb;
+ const len=Math.hypot(east,north,up);
+ if(!len)return null;
+ east/=len;north/=len;up/=len;
+ const horizontal=Math.hypot(east,north);
+ const rawHeading=horizontal>1e-6?norm(Math.atan2(east,north)/rad):null;
+ return {east,north,up,horizontal,rawHeading};
+}
+function android3dRawDirection(){
+ if(os!=="Android")return null;
+ const top=topVectorFromOrientation(cur.a,cur.b,cur.g);
+ const cam=cur.camera3d;
+ const topH=top&&finite(top.horizontal)?top.horizontal:0;
+ const camH=cam&&finite(cam.horizontal)?cam.horizontal:0;
+ let chosen=null,axis="";
+ // 水平付近は上辺、傾斜が大きいときは背面カメラ軸を使う。
+ // 常に水平投影が強い方を選ぶことで、0°付近と90°付近の両方で特異点を避ける。
+ if(topH>=camH&&top&&finite(top.rawHeading)){chosen=top;axis="top"}
+ else if(cam&&finite(cam.rawHeading)){chosen=cam;axis="camera"}
+ if(!chosen||chosen.horizontal<0.18)return null;
+ android3dHeadingState.lastAxis=axis;
+ android3dHeadingState.lastRawHeading=chosen.rawHeading;
+ android3dHeadingState.lastHorizontal=chosen.horizontal;
+ return {rawHeading:chosen.rawHeading,horizontal:chosen.horizontal,axis,topHorizontal:topH,cameraHorizontal:camH};
+}
+function updateAndroid3dHeadingAnchor(){
+ if(os!=="Android"||!finite(cur.absAlpha))return;
+ const top=topVectorFromOrientation(cur.a,cur.b,cur.g);
+ if(!top||!finite(top.rawHeading)||!finite(cur.b))return;
+ const b=norm(cur.b),tilt=Math.min(b,360-b);
+ // 北基準は、上辺の水平投影が十分強い水平近傍でのみ作る。
+ if(tilt>35||top.horizontal<0.75)return;
+ // 激しく動かした直後はAndroid側の絶対方位が収束途中になりやすいため学習しない。
  if(performance.now()<androidOrientationDebug.motionHoldUntil)return;
- // 北基準は deviceorientationabsolute、3D姿勢は deviceorientation と役割を分離する。
+ // 一度アンカーを確定したら保持する。振った後にabsolute方位が20〜50秒かけて戻る挙動を主値へ追従させない。
+ if(android3dHeadingState.anchorLocked)return;
  const absoluteHeading=norm(360-cur.absAlpha+screenDeg());
- const target=norm(cd(absoluteHeading,cur.camera3d.rawHeading));
+ const target=norm(cd(absoluteHeading,top.rawHeading));
  if(!finite(android3dHeadingState.offset))android3dHeadingState.offset=target;
- else android3dHeadingState.offset=norm(android3dHeadingState.offset+cd(target,android3dHeadingState.offset)*0.05);
+ else android3dHeadingState.offset=norm(android3dHeadingState.offset+cd(target,android3dHeadingState.offset)*0.2);
+ android3dHeadingState.anchorAbsoluteHeading=absoluteHeading;
  android3dHeadingState.anchorCount++;
+ if(android3dHeadingState.anchorCount>=5)android3dHeadingState.anchorLocked=true;
 }
 function android3dHeading(){
- if(os!=="Android"||!cur.camera3d||!finite(cur.camera3d.rawHeading)||!finite(android3dHeadingState.offset))return null;
- if(cur.camera3d.horizontal<0.18)return null;
- const h=norm(cur.camera3d.rawHeading+android3dHeadingState.offset+(headingCalibration.enabled?headingCalibration.offset:0));
+ const d=android3dRawDirection();
+ if(!d||!finite(android3dHeadingState.offset))return null;
+ const h=norm(d.rawHeading+android3dHeadingState.offset+(headingCalibration.enabled?headingCalibration.offset:0));
  android3dHeadingState.lastHeading=h;
  return h;
 }
@@ -151,19 +189,19 @@ function primaryHeading(){
 
         replaceOnce(
           'txt("headingSource",finite(cur.iosHeading)?"iPhoneコンパス + 180°ジャンプ検知補正（試験）":cur.source);txt("compassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");',
-          'txt("headingSource",finite(cur.iosHeading)?"iPhoneコンパス + 180°ジャンプ検知補正（試験）":os==="Android"&&finite(android3dHeading())?"Android 3D姿勢方位（相対姿勢/絶対方位を分離）":cur.source);txt("compassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");',
+          'txt("headingSource",finite(cur.iosHeading)?"iPhoneコンパス + 180°ジャンプ検知補正（試験）":os==="Android"&&finite(android3dHeading())?"Android 3D姿勢方位（水平=上辺 / 傾斜=カメラ軸）":cur.source);txt("compassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");',
           'heading source display'
         );
 
         replaceOnce(
           'primary_heading_source:finite(cur.iosHeading)?"ios_webkit_compass_jump_toggle_correction":"os_heading_only",primary_elevation_source:',
-          'primary_heading_source:finite(cur.iosHeading)?"ios_webkit_compass_jump_toggle_correction":os==="Android"&&finite(android3dHeading())?"android_3d_orientation_heading_separated":"os_heading_fallback",android_3d_heading_offset_deg:android3dHeadingState.offset,android_3d_heading_anchor_count:android3dHeadingState.anchorCount,android_pose_event_type:androidOrientationDebug.poseEventType,android_absolute_event_timestamp:androidOrientationDebug.absoluteEventTs,android_motion_hold_remaining_ms:Math.max(0,androidOrientationDebug.motionHoldUntil-performance.now()),primary_elevation_source:',
+          'primary_heading_source:finite(cur.iosHeading)?"ios_webkit_compass_jump_toggle_correction":os==="Android"&&finite(android3dHeading())?"android_3d_heading_top_camera_hybrid":"os_heading_fallback",android_3d_heading_offset_deg:android3dHeadingState.offset,android_3d_heading_anchor_count:android3dHeadingState.anchorCount,android_3d_anchor_locked:android3dHeadingState.anchorLocked,android_3d_anchor_absolute_heading_deg:android3dHeadingState.anchorAbsoluteHeading,android_3d_heading_axis:android3dHeadingState.lastAxis,android_3d_heading_raw_deg:android3dHeadingState.lastRawHeading,android_3d_heading_horizontal_strength:android3dHeadingState.lastHorizontal,android_pose_event_type:androidOrientationDebug.poseEventType,android_absolute_event_timestamp:androidOrientationDebug.absoluteEventTs,android_motion_hold_remaining_ms:Math.max(0,androidOrientationDebug.motionHoldUntil-performance.now()),primary_elevation_source:',
           'CSV primary source'
         );
 
         html = html.replace(
           '主方位はOS側の方位値、3D方位は診断用です。',
-          'iPhoneはOS側方位を主値にします。Androidは deviceorientation を3D姿勢、deviceorientationabsolute を北基準アンカーとして分離し、動作直後はアンカー学習を一時停止します。'
+          'iPhoneはOS側方位を主値にします。Androidは水平付近では端末上辺、傾斜時は背面カメラ軸の3D方位を使い分け、北基準アンカーは水平近傍で取得後に固定します。deviceorientation と deviceorientationabsolute は分離し、動作直後はアンカー学習を停止します。'
         );
 
         document.open();
