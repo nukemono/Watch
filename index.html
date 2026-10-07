@@ -17,6 +17,7 @@
     .diagnostic { background:#5f3dc4; color:#fff; }
     .staged { background:#1971c2; color:#fff; }
     .app { background:#f59f00; color:#111; }
+    .field { background:#d9480f; color:#fff; }
     .tag { display:inline-block; background:#eef1f4; padding:4px 8px; border-radius:999px; font-size:.75rem; margin-right:4px; }
   </style>
 </head>
@@ -53,6 +54,13 @@
       <p><span class="tag">実カメラ</span><span class="tag">GPS</span><span class="tag">太陽位置計算</span><span class="tag">時刻推定</span><span class="tag">履歴</span></p>
       <p>太陽を照準 → センサー/GPS取得 → 太陽位置と照合 → 推定時刻表示 → 誤差確認 → 保存まで、一通り動く最低限の完成形です。</p>
       <a class="btn app" href="app.html">MVPを開く</a>
+    </div>
+
+    <div class="card">
+      <h2>⑤ iPhone 屋外統合検証</h2>
+      <p><span class="tag">iPhone</span><span class="tag">10秒/20Hz</span><span class="tag">MVP時刻推定</span><span class="tag">センサー生データ</span><span class="tag">CSV</span></p>
+      <p>iPhone向け補正を使い、太陽照準中のセンサー生データとMVPの時刻推定結果を同じ測定セッションで保存します。</p>
+      <a class="btn field" href="iphone-field.html">iPhone屋外統合検証を開く</a>
     </div>
   </div>
 </body>
