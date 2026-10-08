@@ -257,9 +257,10 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
     $('flipText').textContent=`180°補正: ${state.flip.active?'ON':'OFF'} / toggle ${state.flip.toggleCount} / recovery ${state.flip.recoveryCount}`;
     const stab=updateStability();
     const gpsOk=state.location && finite(state.location.accuracy) && state.location.accuracy<=MAX_GPS_ACCURACY;
-    const usable=state.started && gpsOk && finite(state.primaryHeading) && finite(state.cameraElevation) && stab.held;
+    const sensorOk=finite(state.primaryHeading) && finite(state.cameraElevation);
+    const usable=state.started && state.location && sensorOk;
     $('recordBtn').disabled=!usable || state.recording;
-    $('gateText').textContent=!state.location?'GPS待機中':!gpsOk?`GPS精度 ${state.location.accuracy.toFixed(0)}m：50m以下を待っています`:stab.held?'測定できます。太陽を中央に保って開始してください。':'安定性が1.5秒継続すると測定できます。';
+    $('gateText').textContent=!state.location?'GPS待機中':!sensorOk?'方位・高度角の取得待ち':stab.held&&gpsOk?'測定できます。太陽を中央に保って開始してください。':'測定は開始できます。現在は品質条件未達のため、結果が無効判定になる可能性があります。';
     if(finite(state.primaryHeading)) setStatus('sensorStatus','センサー: OK','ok');
   }
 
@@ -518,14 +519,9 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
     // クリック直後に updateStability() を再実行すると、iPhoneのイベント間隔次第で
     // 一瞬だけ held=false になり、押せるのに測定が始まらないことがあった。
     const stab=state.lastStability||{};
-    const gpsOk=state.location && finite(state.location.accuracy) && state.location.accuracy<=MAX_GPS_ACCURACY;
     const sensorOk=finite(state.primaryHeading) && finite(state.cameraElevation);
-    if(!gpsOk||!sensorOk){
-      alert('GPS・方位・高度角の取得を確認してから測定してください。');
-      return;
-    }
-    if(!stab.held){
-      alert('安定性が「測定可」になってから測定してください。');
+    if(!state.location||!sensorOk){
+      alert('GPS・方位・高度角の取得が完了してから測定してください。');
       return;
     }
     state.recording=true; state.samples=[]; state.recordStartPerf=performance.now();
