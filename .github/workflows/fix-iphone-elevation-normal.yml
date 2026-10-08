@@ -1,0 +1,51 @@
+name: Fix iPhone elevation normal mode
+
+on:
+  push:
+    branches: [fix/iphone-elevation-normal]
+    paths:
+      - .github/workflows/fix-iphone-elevation-normal.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/iphone-elevation-normal
+      - name: Patch iphone-field.html
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('iphone-field.html')
+          s=p.read_text()
+          s=s.replace('<div class="metric"><div class="label">端末高度角（水平0°）</div><div id="elevation" class="value big">--</div></div>', '<div class="metric"><div class="label">高度角（beta基準 / 水平0°）</div><div id="elevation" class="value big">--</div></div>', 1)
+          s=s.replace('''  function phoneElevationFromBeta(){\n    if(!finite(state.b)) return null;\n    return Math.abs(state.b);\n  }''', '''  function normalElevationFromBeta(){\n    if(!finite(state.b)) return null;\n    // 従来方式：DeviceOrientation beta をそのまま高度角として使用。\n    // 水平≈0°、直角≈90°。3Dカメラ光軸の elevation は主値に使わない。\n    return Math.abs(state.b);\n  }''', 1)
+          s=s.replace('state.cameraElevation=phoneElevationFromBeta();', 'state.cameraElevation=normalElevationFromBeta();', 1)
+          s=s.replace('camera3d_elevation_deg:state.cameraElevation,\n      camera3d_optical_elevation_deg:state.camera3d?.elevation??null,', 'phone_elevation_deg:state.cameraElevation,\n      camera3d_optical_elevation_deg:state.camera3d?.elevation??null,', 1)
+          s=s.replace('if(!finite(sample.ios_heading_corrected_deg)||!finite(sample.camera3d_elevation_deg))', 'if(!finite(sample.ios_heading_corrected_deg)||!finite(sample.phone_elevation_deg))', 1)
+          s=s.replace('const elevations=state.samples.map(s=>s.camera3d_elevation_deg).filter(finite);', 'const elevations=state.samples.map(s=>s.phone_elevation_deg).filter(finite);', 1)
+          p.write_text(s)
+          PY
+      - name: Verify
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('iphone-field.html').read_text()
+          js=s.split('<script>',1)[1].split('</script>',1)[0]
+          Path('/tmp/iphone.js').write_text(js)
+          assert 'normalElevationFromBeta' in s
+          assert 'phone_elevation_deg' in s
+          assert 'camera3d_elevation_deg:state.cameraElevation' not in s
+          PY
+          node --check /tmp/iphone.js
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add iphone-field.html
+          git commit -m "Restore beta-based iPhone elevation"
+          git push
