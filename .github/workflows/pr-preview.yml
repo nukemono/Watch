@@ -8,9 +8,11 @@ permissions:
   contents: write
   pull-requests: write
 
+# PR preview and main deploy both write to gh-pages.
+# Use one repository-wide concurrency group so the two workflows cannot push at the same time.
 concurrency:
-  group: pr-preview-${{ github.event.number }}
-  cancel-in-progress: true
+  group: github-pages-gh-pages-writer
+  cancel-in-progress: false
 
 jobs:
   deploy-preview:
