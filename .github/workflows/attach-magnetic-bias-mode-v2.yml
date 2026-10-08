@@ -1,0 +1,50 @@
+name: Attach magnetic bias estimation mode
+
+on:
+  push:
+    branches: [feature/magnetic-bias-mode-v2]
+    paths:
+      - .github/workflows/attach-magnetic-bias-mode-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/magnetic-bias-mode-v2
+      - name: Attach script
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('iphone-field.html')
+          s = p.read_text()
+          tag = '<script src="magnetic-bias-mode.js"></script>'
+          if tag not in s:
+              anchor = '</script>\n</body>'
+              if anchor not in s:
+                  raise SystemExit('body anchor not found')
+              s = s.replace(anchor, '</script>\n' + tag + '\n</body>', 1)
+          p.write_text(s)
+          PY
+      - name: Syntax checks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s = Path('iphone-field.html').read_text()
+          inline = s.split('<script>',1)[1].split('</script>',1)[0]
+          Path('/tmp/iphone-field-inline.js').write_text(inline)
+          PY
+          node --check /tmp/iphone-field-inline.js
+          node --check magnetic-bias-mode.js
+          grep -q '<script src="magnetic-bias-mode.js"></script>' iphone-field.html
+      - name: Commit page
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add iphone-field.html
+          git commit -m "Enable magnetic bias estimation mode"
+          git push
