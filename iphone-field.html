@@ -514,12 +514,27 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
 
   async function record(){
     if(state.recording) return;
-    const stab=updateStability();
+    // render() がボタンを有効化した時点の安定判定を使用する。
+    // クリック直後に updateStability() を再実行すると、iPhoneのイベント間隔次第で
+    // 一瞬だけ held=false になり、押せるのに測定が始まらないことがあった。
+    const stab=state.lastStability||{};
     const gpsOk=state.location && finite(state.location.accuracy) && state.location.accuracy<=MAX_GPS_ACCURACY;
-    if(!stab.held||!gpsOk){ alert('安定性が「測定可」かつGPS精度50m以下になってから開始してください。'); return; }
+    const sensorOk=finite(state.primaryHeading) && finite(state.cameraElevation);
+    if(!gpsOk||!sensorOk){
+      alert('GPS・方位・高度角の取得を確認してから測定してください。');
+      return;
+    }
+    if(!stab.held){
+      alert('安定性が「測定可」になってから測定してください。');
+      return;
+    }
     state.recording=true; state.samples=[]; state.recordStartPerf=performance.now();
     state.recordUnstableSince=null; state.recordAbortReason=null; state.finishInProgress=false;
-    $('recordBtn').disabled=true; $('recordingBox').classList.remove('hidden'); $('resultCard').classList.add('hidden'); $('bar').style.width='0%';
+    $('recordBtn').disabled=true;
+    $('recordingBox').classList.remove('hidden');
+    $('resultCard').classList.add('hidden');
+    $('bar').style.width='0%';
+    $('recordingText').textContent='測定開始… 0.0 / 10.0 秒';
     let index=0;
     state.sampleTimer=setInterval(()=>{
       if(state.finishInProgress)return;
