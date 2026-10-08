@@ -563,7 +563,8 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
     if(!finite(hs.mean)||!finite(es.mean))reasons.push('方位または高度角の平均を算出できません');
     if(!loc)reasons.push('GPS位置を取得できません');
     const valid=reasons.length===0;
-    const est=(valid&&loc&&finite(hs.mean)&&finite(es.mean))?estimateTime(hs.mean,es.mean,actual,loc.lat,loc.lon):null;
+    // 品質判定とは独立して、方位・高度・位置があれば推定時刻は必ず計算して参考表示する。
+    const est=(loc&&finite(hs.mean)&&finite(es.mean))?estimateTime(hs.mean,es.mean,actual,loc.lat,loc.lon):null;
     const actualSun=loc?sunPosition(actual,loc.lat,loc.lon):null;
     const sessionId=`${$('deviceLabel').value||'iPhone'}_${$('conditionId').value||'I1'}_${new Date().toISOString().replace(/[:.]/g,'-')}`;
     const result=est?{
@@ -610,8 +611,10 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
     $('magneticAssessment').textContent=v?`${magneticClass(v.azimuth_error_deg)} (${v.azimuth_error_deg>=0?'+':''}${v.azimuth_error_deg.toFixed(1)}°)`:'--';
     const detail=$('resultDetail');
     detail.classList.toggle('badNotice',!q.valid);
-    if(!q.valid) detail.textContent='無効測定として保存しました。理由: '+(q.reason||'品質条件を満たしませんでした')+'。時刻推定には使用しません。';
-    else detail.textContent=`推定太陽 方位 ${r.predicted_sun_azimuth_deg.toFixed(1)}° / 高度 ${r.predicted_sun_elevation_deg.toFixed(1)}°。実時刻の太陽 方位 ${s.actual_sun.azimuth.toFixed(1)}° / 高度 ${s.actual_sun.elevation.toFixed(1)}°。磁気影響候補は検証用端末時刻との比較で判定しています。`;
+    if(!q.valid&&r) detail.textContent='品質条件に注意があります: '+(q.reason||'品質条件を満たしませんでした')+'。推定時刻と端末時刻との差は参考値として表示しています。';
+    else if(!q.valid) detail.textContent='無効測定として保存しました。理由: '+(q.reason||'品質条件を満たしませんでした')+'。推定に必要な値が不足しています。';
+    else if(r) detail.textContent=`推定太陽 方位 ${r.predicted_sun_azimuth_deg.toFixed(1)}° / 高度 ${r.predicted_sun_elevation_deg.toFixed(1)}°。実時刻の太陽 方位 ${s.actual_sun.azimuth.toFixed(1)}° / 高度 ${s.actual_sun.elevation.toFixed(1)}°。磁気影響候補は検証用端末時刻との比較で判定しています。`;
+    else detail.textContent='方位・高度・GPSのいずれかが不足し、時刻を推定できませんでした。';
     $('resultCard').scrollIntoView({behavior:'smooth',block:'start'});
   }
 
