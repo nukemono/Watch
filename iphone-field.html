@@ -33,6 +33,10 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
       <div><div class="label">端末名</div><input id="deviceLabel" value="iPhone1"></div>
       <div><div class="label">条件ID</div><input id="conditionId" value="I1"></div>
     </div>
+    <div id="biasModeBox" class="notice" style="margin-top:10px">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:800"><input id="biasMode" type="checkbox" style="width:auto;transform:scale(1.25)"> 磁気バイアス推定モード</label>
+      <div id="biasModeStatus" class="muted" style="margin-top:6px">OFF：従来の1回観測推定</div>
+    </div>
     <button id="startBtn" class="green">カメラ・センサー・GPSを開始</button>
     <div class="statuses">
       <div id="cameraStatus" class="status warn">カメラ: 待機</div>
@@ -52,7 +56,7 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
     </div>
     <div class="grid">
       <div class="metric"><div class="label">主方位 / iPhone補正後</div><div id="heading" class="value big">--</div></div>
-      <div class="metric"><div class="label">カメラ高度角 / 3D</div><div id="elevation" class="value big">--</div></div>
+      <div class="metric"><div class="label">端末高度角（水平0°）</div><div id="elevation" class="value big">--</div></div>
       <div class="metric"><div class="label">raw webkitCompass</div><div id="rawHeading" class="value">--</div></div>
       <div class="metric"><div class="label">Compass Accuracy</div><div id="compassAccuracy" class="value">--</div></div>
       <div class="metric"><div class="label">beta姿勢角 0–360</div><div id="beta360" class="value">--</div></div>
@@ -140,6 +144,11 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
   function betaElevation360(){
     if(!finite(state.b)) return null;
     return norm(state.b);
+  }
+
+  function phoneElevationFromBeta(){
+    if(!finite(state.b)) return null;
+    return Math.abs(state.b);
   }
 
   function cameraVectorFromOrientation(alpha,beta,gamma){
@@ -232,7 +241,7 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
   function render(){
     state.camera3d=cameraVectorFromOrientation(state.a,state.b,state.g);
     state.primaryHeading=correctedIphoneHeading();
-    state.cameraElevation=state.camera3d && finite(state.camera3d.elevation) ? state.camera3d.elevation : null;
+    state.cameraElevation=phoneElevationFromBeta();
     $('heading').textContent=fmt(state.primaryHeading);
     $('elevation').textContent=fmt(state.cameraElevation);
     $('rawHeading').textContent=fmt(state.iosHeading);
@@ -354,7 +363,8 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
       orientation_gamma_deg:state.g,
       beta_elevation_360_deg:betaElevation360(),
       camera3d_raw_heading_deg:state.camera3d?.rawHeading??null,
-      camera3d_elevation_deg:state.camera3d?.elevation??null,
+      camera3d_elevation_deg:state.cameraElevation,
+      camera3d_optical_elevation_deg:state.camera3d?.elevation??null,
       camera3d_horizontal_strength:state.camera3d?.horizontal??null,
       accel_x:state.ax,accel_y:state.ay,accel_z:state.az,
       accel_gravity_x:state.agx,accel_gravity_y:state.agy,accel_gravity_z:state.agz,

@@ -112,9 +112,8 @@
     return {status:'estimated',confidence,observation_count:obs.length,observation_span_min:span,magnetic_bias_deg:best.bias,clock_offset_min:best.offsetSec/60,residual_rms_deg:best.score,azimuth_rms_deg:best.azimuthRms,elevation_rms_deg:best.elevationRms,current_estimated_time_iso:cp.time.toISOString(),current_predicted_sun_azimuth_deg:cp.sun.azimuth,current_predicted_sun_elevation_deg:cp.sun.elevation,current_corrected_heading_deg:norm(current.summary.heading_mean_deg-best.bias),session_ids:obs.map(o=>o.id)};
   }
   function injectUi(){
-    if($('biasMode'))return;
     const conditionCard=document.querySelectorAll('.card')[1],row=conditionCard?.querySelector('.row');
-    if(row){
+    if(!$('biasMode')&&row){
       const box=document.createElement('div');box.className='notice';box.style.marginTop='10px';
       box.innerHTML='<label style="display:flex;align-items:center;gap:8px;font-weight:800"><input id="biasMode" type="checkbox" style="width:auto;transform:scale(1.25)"> 磁気バイアス推定モード</label><div id="biasModeStatus" class="muted" style="margin-top:6px">OFF：従来の1回観測推定</div>';
       row.insertAdjacentElement('afterend',box);
@@ -124,9 +123,15 @@
       const html='<div class="metric"><div class="label">推定モード</div><div id="estimateMode" class="value">--</div></div><div class="metric"><div class="label">推定磁気バイアス</div><div id="biasValue" class="value">--</div></div><div class="metric"><div class="label">バイアス観測数 / 時間幅</div><div id="biasObservationCount" class="value">--</div></div><div class="metric"><div class="label">時計補正量</div><div id="biasClockOffset" class="value">--</div></div>';
       grid.insertAdjacentHTML('beforeend',html);
     }
-    const saved=localStorage.getItem('solarwatch_magnetic_bias_mode')==='1';$('biasMode').checked=saved;
-    $('biasMode').addEventListener('change',()=>{localStorage.setItem('solarwatch_magnetic_bias_mode',$('biasMode').checked?'1':'0');refreshStatus();});
-    $('recordBtn').addEventListener('click',()=>{pendingStart=Date.now();processedId=null;});
+    if($('biasMode')&&!$('biasMode').dataset.bound){
+      $('biasMode').checked=false;
+      $('biasMode').dataset.bound='1';
+      $('biasMode').addEventListener('change',refreshStatus);
+    }
+    if($('recordBtn')&&!$('recordBtn').dataset.biasBound){
+      $('recordBtn').dataset.biasBound='1';
+      $('recordBtn').addEventListener('click',()=>{pendingStart=Date.now();processedId=null;});
+    }
   }
   async function refreshStatus(){
     if(!$('biasModeStatus'))return;
