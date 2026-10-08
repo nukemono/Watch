@@ -8,9 +8,10 @@ on:
 permissions:
   contents: write
 
+# Serialize all workflows that push to gh-pages, including PR previews.
 concurrency:
-  group: pages-main
-  cancel-in-progress: true
+  group: github-pages-gh-pages-writer
+  cancel-in-progress: false
 
 jobs:
   deploy:
