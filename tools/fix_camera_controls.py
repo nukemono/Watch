@@ -69,21 +69,3 @@ if old not in s:
     raise SystemExit('startCamera anchor not found')
 s = s.replace(old, new, 1)
 p.write_text(s)
-
-p = Path('.github/workflows/pr-preview.yml')
-s = p.read_text()
-old = """      - name: Checkout PR branch
-        if: github.event.action != 'closed'
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-"""
-new = """      - name: Checkout PR branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-"""
-if old not in s:
-    raise SystemExit('preview checkout anchor not found')
-s = s.replace(old, new, 1)
-p.write_text(s)
