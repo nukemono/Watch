@@ -56,7 +56,7 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
     </div>
     <div class="grid">
       <div class="metric"><div class="label">主方位 / iPhone補正後</div><div id="heading" class="value big">--</div></div>
-      <div class="metric"><div class="label">端末高度角（水平0°）</div><div id="elevation" class="value big">--</div></div>
+      <div class="metric"><div class="label">高度角（beta基準 / 水平0°）</div><div id="elevation" class="value big">--</div></div>
       <div class="metric"><div class="label">raw webkitCompass</div><div id="rawHeading" class="value">--</div></div>
       <div class="metric"><div class="label">Compass Accuracy</div><div id="compassAccuracy" class="value">--</div></div>
       <div class="metric"><div class="label">beta姿勢角 0–360</div><div id="beta360" class="value">--</div></div>
@@ -146,8 +146,10 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
     return norm(state.b);
   }
 
-  function phoneElevationFromBeta(){
+  function normalElevationFromBeta(){
     if(!finite(state.b)) return null;
+    // 従来方式：DeviceOrientation beta をそのまま高度角として使用。
+    // 水平≈0°、直角≈90°。3Dカメラ光軸の elevation は主値に使わない。
     return Math.abs(state.b);
   }
 
@@ -241,7 +243,7 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
   function render(){
     state.camera3d=cameraVectorFromOrientation(state.a,state.b,state.g);
     state.primaryHeading=correctedIphoneHeading();
-    state.cameraElevation=phoneElevationFromBeta();
+    state.cameraElevation=normalElevationFromBeta();
     $('heading').textContent=fmt(state.primaryHeading);
     $('elevation').textContent=fmt(state.cameraElevation);
     $('rawHeading').textContent=fmt(state.iosHeading);
@@ -363,7 +365,7 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
       orientation_gamma_deg:state.g,
       beta_elevation_360_deg:betaElevation360(),
       camera3d_raw_heading_deg:state.camera3d?.rawHeading??null,
-      camera3d_elevation_deg:state.cameraElevation,
+      phone_elevation_deg:state.cameraElevation,
       camera3d_optical_elevation_deg:state.camera3d?.elevation??null,
       camera3d_horizontal_strength:state.camera3d?.horizontal??null,
       accel_x:state.ax,accel_y:state.ay,accel_z:state.az,
@@ -378,7 +380,7 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
   function sampleQuality(sample){
     const rot=Math.max(...[sample.rotation_alpha_deg_s,sample.rotation_beta_deg_s,sample.rotation_gamma_deg_s].filter(finite).map(Math.abs),0);
     if(rot>RECORD_ROT_ABORT)return {ok:false,hard:true,reason:`回転速度が大きすぎます (${rot.toFixed(1)}°/s)`};
-    if(!finite(sample.ios_heading_corrected_deg)||!finite(sample.camera3d_elevation_deg))return {ok:false,hard:false,reason:'方位または高度角を取得できません'};
+    if(!finite(sample.ios_heading_corrected_deg)||!finite(sample.phone_elevation_deg))return {ok:false,hard:false,reason:'方位または高度角を取得できません'};
     if(finite(sample.readiness_heading_sd_deg)&&sample.readiness_heading_sd_deg>RECORD_HEADING_SD_MAX)return {ok:false,hard:false,reason:`方位SDが増大 (${sample.readiness_heading_sd_deg.toFixed(1)}°)`};
     if(finite(sample.readiness_max_rotation_deg_s)&&sample.readiness_max_rotation_deg_s>RECORD_ROT_MAX)return {ok:false,hard:false,reason:`端末が動いています (${sample.readiness_max_rotation_deg_s.toFixed(1)}°/s)`};
     return {ok:true,hard:false,reason:''};
@@ -543,7 +545,7 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
     state.recording=false;
     const actual=new Date();
     const headings=state.samples.map(s=>s.ios_heading_corrected_deg).filter(finite);
-    const elevations=state.samples.map(s=>s.camera3d_elevation_deg).filter(finite);
+    const elevations=state.samples.map(s=>s.phone_elevation_deg).filter(finite);
     const hs=circularStats(headings), es=meanSd(elevations);
     const loc=state.location;
     const readyCount=state.samples.filter(s=>s.readiness_ok).length;
