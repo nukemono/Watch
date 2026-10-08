@@ -1,0 +1,41 @@
+name: Run magnetic bias patch
+
+on:
+  push:
+    branches: [feature/magnetic-bias-estimation-mode]
+    paths:
+      - .github/workflows/run-magnetic-bias-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/magnetic-bias-estimation-mode
+      - name: Apply patch
+        run: python tools/apply_magnetic_bias_mode.py
+      - name: Syntax check JavaScript
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('iphone-field.html').read_text()
+          js=s.split('<script>',1)[1].split('</script>',1)[0]
+          Path('/tmp/iphone-field.js').write_text(js)
+          PY
+          node --check /tmp/iphone-field.js
+      - name: Marker checks
+        run: |
+          grep -q '磁気バイアス推定モード' iphone-field.html
+          grep -q 'estimateMagneticBias' iphone-field.html
+          grep -q 'bias_estimation_status' iphone-field.html
+      - name: Commit patched page
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add iphone-field.html
+          git commit -m "Add magnetic bias estimation mode"
+          git push
