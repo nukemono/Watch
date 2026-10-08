@@ -1,0 +1,88 @@
+name: Fix iPhone record button start behavior
+
+on:
+  push:
+    branches: [fix/iphone-record-button-always-starts]
+    paths:
+      - .github/workflows/fix-iphone-record-button-always-starts.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/iphone-record-button-always-starts
+      - name: Patch iphone-field.html
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('iphone-field.html')
+          s=p.read_text()
+
+          old="""    const stab=updateStability();
+    const gpsOk=state.location && finite(state.location.accuracy) && state.location.accuracy<=MAX_GPS_ACCURACY;
+    const usable=state.started && gpsOk && finite(state.primaryHeading) && finite(state.cameraElevation) && stab.held;
+    $('recordBtn').disabled=!usable || state.recording;
+    $('gateText').textContent=!state.location?'GPS待機中':!gpsOk?`GPS精度 ${state.location.accuracy.toFixed(0)}m：50m以下を待っています`:stab.held?'測定できます。太陽を中央に保って開始してください。':'安定性が1.5秒継続すると測定できます。';"""
+          new="""    const stab=updateStability();
+    const gpsOk=state.location && finite(state.location.accuracy) && state.location.accuracy<=MAX_GPS_ACCURACY;
+    const sensorOk=finite(state.primaryHeading) && finite(state.cameraElevation);
+    // 品質条件は「測定開始を禁止」するためではなく、測定結果を有効/無効判定するために使う。
+    // GPS・方位・高度角さえ取得できていれば10秒測定は必ず開始できる。
+    const usable=state.started && state.location && sensorOk;
+    $('recordBtn').disabled=!usable || state.recording;
+    $('gateText').textContent=!state.location?'GPS待機中':!sensorOk?'方位・高度角の取得待ち':stab.held&&gpsOk?'測定できます。太陽を中央に保って開始してください。':'測定は開始できます。現在は品質条件未達のため、結果が無効判定になる可能性があります。';"""
+          if old not in s:
+              raise SystemExit('render gate anchor not found')
+          s=s.replace(old,new,1)
+
+          old2="""    const stab=state.lastStability||{};
+    const gpsOk=state.location && finite(state.location.accuracy) && state.location.accuracy<=MAX_GPS_ACCURACY;
+    const sensorOk=finite(state.primaryHeading) && finite(state.cameraElevation);
+    if(!gpsOk||!sensorOk){
+      alert('GPS・方位・高度角の取得を確認してから測定してください。');
+      return;
+    }
+    if(!stab.held){
+      alert('安定性が「測定可」になってから測定してください。');
+      return;
+    }
+    state.recording=true; state.samples=[]; state.recordStartPerf=performance.now();"""
+          new2="""    const stab=state.lastStability||{};
+    const sensorOk=finite(state.primaryHeading) && finite(state.cameraElevation);
+    if(!state.location||!sensorOk){
+      alert('GPS・方位・高度角の取得が完了してから測定してください。');
+      return;
+    }
+    // 安定性やGPS精度が基準未達でも測定自体は開始する。
+    // 10秒後の品質判定で無効理由を記録する。
+    state.recording=true; state.samples=[]; state.recordStartPerf=performance.now();"""
+          if old2 not in s:
+              raise SystemExit('record guard anchor not found')
+          s=s.replace(old2,new2,1)
+
+          p.write_text(s)
+          PY
+      - name: Verify
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('iphone-field.html').read_text()
+          js=s.split('<script>',1)[1].split('</script>',1)[0]
+          Path('/tmp/iphone.js').write_text(js)
+          assert "const usable=state.started && state.location && sensorOk;" in s
+          assert "安定性が「測定可」になってから測定してください。" not in s
+          assert '測定は開始できます。現在は品質条件未達' in s
+          PY
+          node --check /tmp/iphone.js
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add iphone-field.html
+          git commit -m "Allow iPhone field measurement to start before quality gate"
+          git push
