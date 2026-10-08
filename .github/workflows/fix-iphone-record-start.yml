@@ -1,0 +1,54 @@
+name: Fix iPhone 10 second measurement start
+
+on:
+  push:
+    branches: [fix/iphone-record-start]
+    paths:
+      - .github/workflows/fix-iphone-record-start.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/iphone-record-start
+      - name: Patch iphone-field.html
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('iphone-field.html')
+          s=p.read_text()
+          old='''  async function record(){\n    if(state.recording) return;\n    const stab=updateStability();\n    const gpsOk=state.location && finite(state.location.accuracy) && state.location.accuracy<=MAX_GPS_ACCURACY;\n    if(!stab.held||!gpsOk){ alert('安定性が「測定可」かつGPS精度50m以下になってから開始してください。'); return; }\n    state.recording=true; state.samples=[]; state.recordStartPerf=performance.now();'''
+          new='''  async function record(){\n    if(state.recording) return;\n    // render() がボタンを有効化した時点の安定判定を使用する。\n    // クリック直後に updateStability() を再実行すると、iPhoneのイベント間隔次第で\n    // 一瞬だけ held=false になり、押せるのに測定が始まらないことがあった。\n    const stab=state.lastStability||{};\n    const gpsOk=state.location && finite(state.location.accuracy) && state.location.accuracy<=MAX_GPS_ACCURACY;\n    const sensorOk=finite(state.primaryHeading) && finite(state.cameraElevation);\n    if(!gpsOk||!sensorOk){\n      alert('GPS・方位・高度角の取得を確認してから測定してください。');\n      return;\n    }\n    if(!stab.held){\n      alert('安定性が「測定可」になってから測定してください。');\n      return;\n    }\n    state.recording=true; state.samples=[]; state.recordStartPerf=performance.now();'''
+          if old not in s:
+              raise SystemExit('record start anchor not found')
+          s=s.replace(old,new,1)
+          old2="""    $('recordBtn').disabled=true; $('recordingBox').classList.remove('hidden'); $('resultCard').classList.add('hidden'); $('bar').style.width='0%';"""
+          new2="""    $('recordBtn').disabled=true;\n    $('recordingBox').classList.remove('hidden');\n    $('resultCard').classList.add('hidden');\n    $('bar').style.width='0%';\n    $('recordingText').textContent='測定開始… 0.0 / 10.0 秒';"""
+          if old2 not in s:
+              raise SystemExit('record UI anchor not found')
+          s=s.replace(old2,new2,1)
+          p.write_text(s)
+          PY
+      - name: Verify
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('iphone-field.html').read_text()
+          js=s.split('<script>',1)[1].split('</script>',1)[0]
+          Path('/tmp/iphone.js').write_text(js)
+          assert 'const stab=state.lastStability||{};' in s
+          assert '測定開始… 0.0 / 10.0 秒' in s
+          PY
+          node --check /tmp/iphone.js
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add iphone-field.html
+          git commit -m "Fix iPhone 10 second measurement start"
+          git push
