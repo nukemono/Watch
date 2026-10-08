@@ -1,0 +1,94 @@
+name: Apply iPhone field quality gate
+
+on:
+  push:
+    branches: [fix/iphone-field-quality-gate]
+    paths:
+      - .github/workflows/apply-iphone-field-quality-gate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/iphone-field-quality-gate
+      - name: Patch iphone-field.html
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('iphone-field.html')
+          s = p.read_text()
+
+          def once(old, new, label):
+              global s
+              if old not in s:
+                  raise SystemExit(f'anchor not found: {label}')
+              s = s.replace(old, new, 1)
+
+          once('<title>太陽ウォッチ iPhone 屋外統合検証</title>', '<title>太陽ウォッチ iPhone 屋外統合検証 v2</title>', 'title')
+          once('<h1 style="margin-top:12px">☀️ iPhone 屋外統合検証</h1>', '<h1 style="margin-top:12px">☀️ iPhone 屋外統合検証 v2</h1>', 'heading')
+          once('iPhone向けの180°ジャンプ補正・parity recovery・50ms固定サンプリング・IndexedDB保存を統合しています。</div>', 'iPhone向けの180°ジャンプ補正・parity recovery・50ms固定サンプリング・IndexedDB保存に加え、<strong>測定前の安定待ちと測定中の品質監視</strong>を統合しています。</div>', 'intro')
+          once('.notice{border:1px solid #ead274;background:#fff7dd;border-radius:10px;padding:9px;font-size:.8rem;line-height:1.5}.mono', '.notice{border:1px solid #ead274;background:#fff7dd;border-radius:10px;padding:9px;font-size:.8rem;line-height:1.5}.notice.badNotice{border-color:#e0aaaa;background:#fff0f0;color:#8d2020}.mono', 'bad notice css')
+          once('<div id="flipText" class="muted mono">180°補正: --</div>\n    <button id="recordBtn" class="primary" disabled>10秒測定 ＋ 時刻推定</button>', '<div id="flipText" class="muted mono">180°補正: --</div>\n    <div id="gateText" class="muted">安定性が1.5秒継続すると測定できます。</div>\n    <button id="recordBtn" class="primary" disabled>10秒測定 ＋ 時刻推定</button>', 'gate ui')
+
+          once('''    <div class="grid">\n      <div class="metric"><div class="label">推定時刻</div><div id="estimatedTime" class="value big">--</div></div>''', '''    <div class="grid">\n      <div class="metric"><div class="label">測定品質</div><div id="qualityValue" class="value big">--</div></div>\n      <div class="metric"><div class="label">推定時刻</div><div id="estimatedTime" class="value big">--</div></div>''', 'quality metric')
+          once('<div class="metric"><div class="label">高度 SD</div><div id="elevationSd" class="value">--</div></div>\n      <div class="metric"><div class="label">角度残差</div>', '<div class="metric"><div class="label">高度 SD</div><div id="elevationSd" class="value">--</div></div>\n      <div class="metric"><div class="label">安定サンプル率</div><div id="readyRatio" class="value">--</div></div>\n      <div class="metric"><div class="label">角度残差</div>', 'ready ratio metric')
+          once('<div class="metric"><div class="label">実時刻の太陽高度との差</div><div id="actualElError" class="value">--</div></div>\n    </div>', '<div class="metric"><div class="label">実時刻の太陽高度との差</div><div id="actualElError" class="value">--</div></div>\n      <div class="metric"><div class="label">磁気影響候補（検証専用）</div><div id="magneticAssessment" class="value">--</div></div>\n    </div>', 'magnetic metric')
+
+          once('''  const SAMPLE_MS = 50, RECORD_MS = 10000;''', '''  const SAMPLE_MS = 50, RECORD_MS = 10000;\n  const READY_WINDOW_MS = 2500, READY_HOLD_MS = 1500;\n  const READY_HEADING_SD_MAX = 3, READY_ROT_MAX = 8;\n  const RECORD_HEADING_SD_MAX = 4, RECORD_ROT_MAX = 12, RECORD_ROT_ABORT = 25, RECORD_UNSTABLE_GRACE_MS = 400;\n  const FINAL_HEADING_SD_MAX = 3, FINAL_ELEV_SD_MAX = 3, MIN_SAMPLE_COUNT = 160, MIN_READY_RATIO = 0.8, MAX_GPS_ACCURACY = 50;''', 'quality constants')
+          once('''    latestSession:null, stableHeading:[], stableRotation:[],\n    flip:{active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:''}''', '''    latestSession:null, stableHeading:[], stableRotation:[], readySince:null,\n    lastStability:{ready:false,held:false,headingSd:null,maxRot:null,heldMs:0},\n    recordUnstableSince:null, recordAbortReason:null, finishInProgress:false,\n    flip:{active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:''}''', 'quality state')
+
+          stability = '''  function updateStability(){\n    const now=performance.now();\n    state.stableHeading=state.stableHeading.filter(x=>now-x.t<=READY_WINDOW_MS);\n    state.stableRotation=state.stableRotation.filter(x=>now-x.t<=READY_WINDOW_MS);\n    if(finite(state.primaryHeading)) state.stableHeading.push({t:now,v:state.primaryHeading});\n    const rot=Math.max(...[state.ra,state.rb,state.rg].filter(finite).map(Math.abs),0);\n    state.stableRotation.push({t:now,v:rot});\n    const hs=circularStats(state.stableHeading.map(x=>x.v));\n    const maxRot=Math.max(...state.stableRotation.map(x=>x.v),0);\n    const rawReady=state.stableHeading.length>=15 && finite(hs.sd) && hs.sd<=READY_HEADING_SD_MAX && maxRot<=READY_ROT_MAX && finite(state.cameraElevation);\n    if(rawReady){ if(state.readySince===null) state.readySince=now; } else state.readySince=null;\n    const heldMs=state.readySince===null?0:now-state.readySince;\n    const held=rawReady && heldMs>=READY_HOLD_MS;\n    state.lastStability={ready:rawReady,held,headingSd:hs.sd,maxRot,heldMs};\n    if(held) setStatus('readyStatus','安定性: 測定可','ok');\n    else if(rawReady) setStatus('readyStatus','安定性: '+(heldMs/1000).toFixed(1)+'/1.5秒','warn');\n    else setStatus('readyStatus','安定性: '+(finite(hs.sd)?'SD '+hs.sd.toFixed(1)+'°':'待機'),'warn');\n    return state.lastStability;\n  }'''
+          s, n = re.subn(r'  function updateStability\(\)\{.*?\n  \}', stability, s, count=1, flags=re.S)
+          if n != 1: raise SystemExit('updateStability block not found')
+
+          once('''    updateStability();\n    const usable=state.started && state.location && finite(state.primaryHeading) && finite(state.cameraElevation);\n    $('recordBtn').disabled=!usable || state.recording;''', '''    const stab=updateStability();\n    const gpsOk=state.location && finite(state.location.accuracy) && state.location.accuracy<=MAX_GPS_ACCURACY;\n    const usable=state.started && gpsOk && finite(state.primaryHeading) && finite(state.cameraElevation) && stab.held;\n    $('recordBtn').disabled=!usable || state.recording;\n    $('gateText').textContent=!state.location?'GPS待機中':!gpsOk?`GPS精度 ${state.location.accuracy.toFixed(0)}m：50m以下を待っています`:stab.held?'測定できます。太陽を中央に保って開始してください。':'安定性が1.5秒継続すると測定できます。';''', 'render gate')
+          once('''    const stab=updateStability();\n    return {''', '''    const stab=state.lastStability||{};\n    return {''', 'snapshot stability')
+          once('''      readiness_ok:stab.ready''', '''      readiness_ok:stab.held===true''', 'snapshot readiness')
+
+          sample_quality = '''\n  function sampleQuality(sample){\n    const rot=Math.max(...[sample.rotation_alpha_deg_s,sample.rotation_beta_deg_s,sample.rotation_gamma_deg_s].filter(finite).map(Math.abs),0);\n    if(rot>RECORD_ROT_ABORT)return {ok:false,hard:true,reason:`回転速度が大きすぎます (${rot.toFixed(1)}°/s)`};\n    if(!finite(sample.ios_heading_corrected_deg)||!finite(sample.camera3d_elevation_deg))return {ok:false,hard:false,reason:'方位または高度角を取得できません'};\n    if(finite(sample.readiness_heading_sd_deg)&&sample.readiness_heading_sd_deg>RECORD_HEADING_SD_MAX)return {ok:false,hard:false,reason:`方位SDが増大 (${sample.readiness_heading_sd_deg.toFixed(1)}°)`};\n    if(finite(sample.readiness_max_rotation_deg_s)&&sample.readiness_max_rotation_deg_s>RECORD_ROT_MAX)return {ok:false,hard:false,reason:`端末が動いています (${sample.readiness_max_rotation_deg_s.toFixed(1)}°/s)`};\n    return {ok:true,hard:false,reason:''};\n  }\n'''
+          once('''\n  function julianDay(date){''', sample_quality + '''\n  function julianDay(date){''', 'sample quality insertion')
+
+          magnetic = '''  function magneticClass(azError){\n    const a=Math.abs(azError);\n    return a<5?'低':a<10?'注意':'強';\n  }\n\n'''
+          once('''  function rowForCsv(session,sample){''', magnetic + '''  function rowForCsv(session,sample){''', 'magnetic class')
+          once('''    const r=session.result||{};\n    const a=session.actual_sun||{};\n    return {\n      session_id:session.session_id,device_label:session.device_label,measurement_condition_id:session.condition_id,\n      created_at:session.created_at,...sample,''', '''    const r=session.result||{};\n    const a=session.actual_sun||{};\n    const q=session.quality||{};\n    return {\n      session_id:session.session_id,device_label:session.device_label,measurement_condition_id:session.condition_id,\n      created_at:session.created_at,measurement_valid:q.valid!==false,measurement_invalid_reason:q.reason||'',measurement_ready_ratio:q.ready_ratio??null,measurement_quality_sample_count:q.sample_count??null,...sample,''', 'csv quality fields')
+          once('''      observation_elevation_error_deg:session.sensor_validation?.elevation_error_deg??null\n    };''', '''      observation_elevation_error_deg:session.sensor_validation?.elevation_error_deg??null,\n      magnetic_effect_candidate:session.sensor_validation?magneticClass(session.sensor_validation.azimuth_error_deg):null\n    };''', 'csv magnetic field')
+
+          record_block = '''  async function record(){\n    if(state.recording) return;\n    const stab=updateStability();\n    const gpsOk=state.location && finite(state.location.accuracy) && state.location.accuracy<=MAX_GPS_ACCURACY;\n    if(!stab.held||!gpsOk){ alert('安定性が「測定可」かつGPS精度50m以下になってから開始してください。'); return; }\n    state.recording=true; state.samples=[]; state.recordStartPerf=performance.now();\n    state.recordUnstableSince=null; state.recordAbortReason=null; state.finishInProgress=false;\n    $('recordBtn').disabled=true; $('recordingBox').classList.remove('hidden'); $('resultCard').classList.add('hidden'); $('bar').style.width='0%';\n    let index=0;\n    state.sampleTimer=setInterval(()=>{\n      if(state.finishInProgress)return;\n      const elapsed=performance.now()-state.recordStartPerf;\n      const sample=snapshotSample(index++);\n      state.samples.push(sample);\n      const q=sampleQuality(sample);\n      if(q.hard){ state.recordAbortReason=q.reason; finishRecord(true); return; }\n      if(!q.ok){\n        if(state.recordUnstableSince===null)state.recordUnstableSince=performance.now();\n        if(performance.now()-state.recordUnstableSince>=RECORD_UNSTABLE_GRACE_MS){ state.recordAbortReason=q.reason; finishRecord(true); return; }\n      }else state.recordUnstableSince=null;\n      $('bar').style.width=Math.min(100,elapsed/RECORD_MS*100)+'%';\n      $('recordingText').textContent=(elapsed/1000).toFixed(1)+' / 10.0 秒　'+state.samples.length+' samples';\n      if(elapsed>=RECORD_MS) finishRecord(false);\n    },SAMPLE_MS);\n  }\n\n  async function finishRecord(aborted=false){\n    if(state.finishInProgress)return;\n    state.finishInProgress=true;\n    if(state.sampleTimer){ clearInterval(state.sampleTimer); state.sampleTimer=null; }\n    state.recording=false;\n    const actual=new Date();\n    const headings=state.samples.map(s=>s.ios_heading_corrected_deg).filter(finite);\n    const elevations=state.samples.map(s=>s.camera3d_elevation_deg).filter(finite);\n    const hs=circularStats(headings), es=meanSd(elevations);\n    const loc=state.location;\n    const readyCount=state.samples.filter(s=>s.readiness_ok).length;\n    const readyRatio=state.samples.length?readyCount/state.samples.length:0;\n    const reasons=[];\n    if(aborted)reasons.push(state.recordAbortReason||'測定中に端末が不安定になりました');\n    if(state.samples.length<MIN_SAMPLE_COUNT)reasons.push(`サンプル不足 ${state.samples.length}/${MIN_SAMPLE_COUNT}`);\n    if(!finite(hs.sd)||hs.sd>FINAL_HEADING_SD_MAX)reasons.push(`方位SD ${finite(hs.sd)?hs.sd.toFixed(1):'--'}°`);\n    if(!finite(es.sd)||es.sd>FINAL_ELEV_SD_MAX)reasons.push(`高度SD ${finite(es.sd)?es.sd.toFixed(1):'--'}°`);\n    if(readyRatio<MIN_READY_RATIO)reasons.push(`安定サンプル率 ${(readyRatio*100).toFixed(0)}%`);\n    if(!loc||!finite(loc.accuracy)||loc.accuracy>MAX_GPS_ACCURACY)reasons.push(`GPS精度 ${loc&&finite(loc.accuracy)?loc.accuracy.toFixed(0):'--'}m`);\n    const valid=reasons.length===0;\n    const est=(valid&&loc&&finite(hs.mean)&&finite(es.mean))?estimateTime(hs.mean,es.mean,actual,loc.lat,loc.lon):null;\n    const actualSun=loc?sunPosition(actual,loc.lat,loc.lon):null;\n    const sessionId=`${$('deviceLabel').value||'iPhone'}_${$('conditionId').value||'I1'}_${new Date().toISOString().replace(/[:.]/g,'-')}`;\n    const result=est?{\n      estimated_time_iso:est.time.toISOString(),actual_time_iso:actual.toISOString(),\n      time_error_min:signedMinuteError(est.time,actual),\n      predicted_sun_azimuth_deg:est.sun.azimuth,predicted_sun_elevation_deg:est.sun.elevation,\n      angular_residual_deg:est.dist\n    }:null;\n    const validation=(actualSun&&finite(hs.mean)&&finite(es.mean))?{\n      azimuth_error_deg:cd(hs.mean,actualSun.azimuth),\n      elevation_error_deg:es.mean-actualSun.elevation\n    }:null;\n    const session={\n      session_id:sessionId,created_at:new Date().toISOString(),\n      device_label:$('deviceLabel').value||'iPhone',condition_id:$('conditionId').value||'I1',\n      location:loc,quality:{valid,reason:reasons.join(' / '),ready_ratio:readyRatio,sample_count:state.samples.length},\n      summary:{heading_mean_deg:hs.mean,heading_sd_deg:hs.sd,elevation_mean_deg:es.mean,elevation_sd_deg:es.sd,sample_count:state.samples.length},\n      result,actual_sun:actualSun,sensor_validation:validation,samples:state.samples\n    };\n    state.latestSession=session;\n    try{ await saveSession(session); }catch(e){ alert('保存エラー: '+e.message); }\n    showResult(session); await renderHistory();\n    $('recordingBox').classList.add('hidden');\n    state.finishInProgress=false;\n    render();\n  }'''
+          s, n = re.subn(r'  async function record\(\)\{.*?\n  \}\n\n  async function finishRecord\(\)\{.*?\n  \}', record_block, s, count=1, flags=re.S)
+          if n != 1: raise SystemExit('record/finish block not found')
+
+          show_result = '''  function showResult(s){\n    const r=s.result,v=s.sensor_validation,q=s.quality||{valid:true,reason:'',ready_ratio:null};\n    $('resultCard').classList.remove('hidden');\n    $('qualityValue').textContent=q.valid?'有効':'無効';\n    $('qualityValue').style.color=q.valid?'var(--ok)':'var(--bad)';\n    $('estimatedTime').textContent=r?new Date(r.estimated_time_iso).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'--';\n    $('timeError').textContent=r?(r.time_error_min>=0?'+':'')+r.time_error_min.toFixed(1)+'分':'--';\n    $('obsHeading').textContent=fmt(s.summary.heading_mean_deg);\n    $('obsElevation').textContent=fmt(s.summary.elevation_mean_deg);\n    $('headingSd').textContent=fmt(s.summary.heading_sd_deg);\n    $('elevationSd').textContent=fmt(s.summary.elevation_sd_deg);\n    $('readyRatio').textContent=finite(q.ready_ratio)?(q.ready_ratio*100).toFixed(0)+'%':'--';\n    $('residual').textContent=r?fmt(r.angular_residual_deg):'--';\n    $('resultGps').textContent=s.location?s.location.accuracy.toFixed(1)+' m':'--';\n    $('actualAzError').textContent=v?((v.azimuth_error_deg>=0?'+':'')+v.azimuth_error_deg.toFixed(1)+'°'):'--';\n    $('actualElError').textContent=v?((v.elevation_error_deg>=0?'+':'')+v.elevation_error_deg.toFixed(1)+'°'):'--';\n    $('magneticAssessment').textContent=v?`${magneticClass(v.azimuth_error_deg)} (${v.azimuth_error_deg>=0?'+':''}${v.azimuth_error_deg.toFixed(1)}°)`:'--';\n    const detail=$('resultDetail');\n    detail.classList.toggle('badNotice',!q.valid);\n    if(!q.valid) detail.textContent='無効測定として保存しました。理由: '+(q.reason||'品質条件を満たしませんでした')+'。時刻推定には使用しません。';\n    else detail.textContent=`推定太陽 方位 ${r.predicted_sun_azimuth_deg.toFixed(1)}° / 高度 ${r.predicted_sun_elevation_deg.toFixed(1)}°。実時刻の太陽 方位 ${s.actual_sun.azimuth.toFixed(1)}° / 高度 ${s.actual_sun.elevation.toFixed(1)}°。磁気影響候補は検証用端末時刻との比較で判定しています。`;\n    $('resultCard').scrollIntoView({behavior:'smooth',block:'start'});\n  }'''
+          s, n = re.subn(r'  function showResult\(s\)\{.*?\n  \}\n\n  async function renderHistory', show_result + '\n\n  async function renderHistory', s, count=1, flags=re.S)
+          if n != 1: raise SystemExit('showResult block not found')
+
+          history = '''  async function renderHistory(){\n    const ss=await getSessions();\n    if(!ss.length){ $('history').innerHTML='<span class="muted">まだありません。</span>'; return; }\n    $('history').innerHTML=ss.slice(0,12).map(s=>{\n      const r=s.result,q=s.quality||{valid:true,reason:''};\n      const resultText=q.valid?('推定 '+(r?new Date(r.estimated_time_iso).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'--')+' / 誤差 '+(r?r.time_error_min.toFixed(1)+'分':'--')):('無効: '+(q.reason||'品質不足'));\n      return `<div class="history"><strong>${q.valid?'✅':'⚠️'} ${s.device_label} / ${s.condition_id}</strong><br><span class="muted">${new Date(s.created_at).toLocaleString()} / ${resultText} / n=${s.summary.sample_count}</span></div>`;\n    }).join('');\n  }'''
+          s, n = re.subn(r'  async function renderHistory\(\)\{.*?\n  \}', history, s, count=1, flags=re.S)
+          if n != 1: raise SystemExit('renderHistory block not found')
+
+          p.write_text(s)
+          PY
+      - name: Syntax check JavaScript
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('iphone-field.html').read_text()
+          js=s.split('<script>',1)[1].split('</script>',1)[0]
+          Path('/tmp/iphone-field.js').write_text(js)
+          PY
+          node --check /tmp/iphone-field.js
+      - name: Remove one-time workflow
+        run: rm .github/workflows/apply-iphone-field-quality-gate.yml
+      - name: Commit generated patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add iphone-field.html .github/workflows/apply-iphone-field-quality-gate.yml
+          git commit -m "Reject unstable iPhone field measurements"
+          git push
