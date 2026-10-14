@@ -39,6 +39,14 @@
           'heading'
         );
 
+        // センサー検証プロトタイプだけで WMM ローダーを有効化する。
+        // sensor.html のインライン実装より先に読み込み、wmm.js から WMM.COF を取得する。
+        replaceOnce(
+          '\n<script>\n(()=>{',
+          '\n<script src="wmm.js"><\/script>\n<script>\n(()=>{',
+          'WMM loader script'
+        );
+
         replaceOnce(
           'let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""}; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true;',
 `let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""};
