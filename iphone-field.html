@@ -95,6 +95,12 @@ body{margin:0;background:#f4f5f7;color:#20242a;font-family:-apple-system,BlinkMa
    'sample WMM fields'
   );
 
+  replaceOnce(
+   '  renderHistory();\n})();',
+   "  if(window.WMM2025&&WMM2025.ready){WMM2025.ready.then(()=>render()).catch(()=>render());}\n  renderHistory();\n})();",
+   'WMM ready rerender'
+  );
+
   html=html.replace(
    'iPhone向けの180°ジャンプ補正・parity recovery・50ms固定サンプリング・IndexedDB保存に加え、<strong>測定前の安定待ちと測定中の品質監視</strong>を統合しています。',
    'iPhone向けの180°ジャンプ補正・parity recovery・50ms固定サンプリング・IndexedDB保存に加え、<strong>WMM2025磁気偏角補正を主方位へ標準適用</strong>しています。太陽照準表示・10秒記録・時刻推定は同じWMM補正後方位を使用します。'
