@@ -23,6 +23,19 @@ body{margin:0;background:#f4f5f7;color:#20242a;font-family:-apple-system,BlinkMa
    'heading label'
   );
 
+  // 測定者が見る数値は方位・高度だけに絞る。
+  // 内部取得・CSV項目は検証継続のため変更しない。
+  for(const [from,to,label] of [
+   ['<div class="metric"><div class="label">raw webkitCompass</div><div id="rawHeading" class="value">--</div></div>','<div class="metric hidden"><div class="label">raw webkitCompass</div><div id="rawHeading" class="value">--</div></div>','hide raw heading'],
+   ['<div class="metric"><div class="label">Compass Accuracy</div><div id="compassAccuracy" class="value">--</div></div>','<div class="metric hidden"><div class="label">Compass Accuracy</div><div id="compassAccuracy" class="value">--</div></div>','hide compass accuracy'],
+   ['<div class="metric"><div class="label">beta姿勢角 0–360</div><div id="beta360" class="value">--</div></div>','<div class="metric hidden"><div class="label">beta姿勢角 0–360</div><div id="beta360" class="value">--</div></div>','hide beta'],
+   ['<div class="metric"><div class="label">3Dカメラ方位 診断</div><div id="camera3dHeading" class="value">--</div></div>','<div class="metric hidden"><div class="label">3Dカメラ方位 診断</div><div id="camera3dHeading" class="value">--</div></div>','hide 3d heading'],
+   ['<div class="metric"><div class="label">GPS精度</div><div id="gpsAccuracy" class="value">--</div></div>','<div class="metric hidden"><div class="label">GPS精度</div><div id="gpsAccuracy" class="value">--</div></div>','hide gps accuracy'],
+   ['<div class="metric"><div class="label">回転速度 最大軸</div><div id="rotationRate" class="value">--</div></div>','<div class="metric hidden"><div class="label">回転速度 最大軸</div><div id="rotationRate" class="value">--</div></div>','hide rotation'],
+   ['<div class="muted mono" id="sourceText">方位ソース: --</div>','<div class="muted mono hidden" id="sourceText">方位ソース: --</div>','hide source'],
+   ['<div id="flipText" class="muted mono">180°補正: --</div>','<div id="flipText" class="muted mono hidden">180°補正: --</div>','hide flip']
+  ]) replaceOnce(from,to,label);
+
   replaceOnce(
    '\n<script>\n(() => {',
    '\n<script src="wmm.js"><\/script>\n<script>\n(() => {',
