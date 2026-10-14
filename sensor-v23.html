@@ -48,11 +48,38 @@
         );
 
         replaceOnce(
+          '<div class="card">\n<h2>5.4 方位キャリブレーション</h2>',
+`<div class="card">
+<h2>5.37 WMM磁気偏角補正</h2>
+<div class="status info">従来の採用方位をそのまま使うか、GPS位置・日時からWMM2025の磁気偏角を加えて真北基準へ補正するかを切り替えます。補正ありでは <b>真方位 = 従来方位 + 偏角</b>（東偏角=＋、西偏角=－）です。</div>
+<label>方位補正モード</label>
+<select id="wmmCorrectionMode">
+<option value="off" selected>補正なし（従来どおり）</option>
+<option value="on">WMM2025補正あり（真北基準）</option>
+</select>
+<div id="wmmStatus" class="status">補正なし（従来どおり）</div>
+<div class="grid">
+<div class="metric"><div class="label">WMM偏角</div><div id="wmmDeclination" class="value">--</div></div>
+<div class="metric"><div class="label">補正前の採用方位</div><div id="wmmBaseHeading" class="value">--</div></div>
+<div class="metric"><div class="label">WMM補正後の真方位</div><div id="wmmTrueHeading" class="value">--</div></div>
+<div class="metric"><div class="label">WMMモデル</div><div id="wmmModel" class="value">WMM2025 読込待ち</div></div>
+</div>
+<div class="mini">「この向きを北0°として登録」の手動方位補正とは別系統です。比較時は二重補正を避けるため、WMM補正と手動北0°補正を同時に使わないことを推奨します。</div>
+</div>
+
+<div class="card">
+<h2>5.4 方位キャリブレーション</h2>`,
+          'WMM correction controls'
+        );
+
+        replaceOnce(
           'let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""}; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true;',
 `let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""};
 let calibration={horizontal:null,zenith:null};
 let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null};
 let disableAlphaInversion=true;
+let wmmCorrectionEnabled=false;
+let wmmCache={key:"",result:null,error:""};
 
 // Android 3D方位の閾値は挙動を固定するため一箇所で管理する。
 // 数値は v25 の既存値をそのまま名前付き定数へ移しただけで、判定条件は変更しない。
@@ -167,7 +194,7 @@ function android3dHeading(){
  return heading;
 }
 
-function primaryHeading(){
+function primaryHeadingWithoutWmm(){
  const iphoneHeading=iphoneHeadingCorrected();
  if(finite(iphoneHeading)){
   return norm(iphoneHeading+(headingCalibration.enabled?headingCalibration.offset:0));
@@ -175,6 +202,52 @@ function primaryHeading(){
  const androidHeading=android3dHeading();
  if(finite(androidHeading))return androidHeading;
  return cur.heading;
+}
+
+function currentWmmResult(){
+ if(!window.WMM2025||!WMM2025.loaded)return null;
+ if(!geo||!finite(geo.lat)||!finite(geo.lon))return null;
+ const altitude=finite(geo.alt)?geo.alt:0;
+ const now=new Date();
+ const dayKey=now.toISOString().slice(0,10);
+ const key=geo.lat.toFixed(5)+"|"+geo.lon.toFixed(5)+"|"+altitude.toFixed(1)+"|"+dayKey;
+ if(wmmCache.key===key)return wmmCache.result;
+ try{
+  const result=WMM2025.calculate(geo.lat,geo.lon,altitude,now);
+  wmmCache={key,result,error:""};
+  return result;
+ }catch(e){
+  wmmCache={key,result:null,error:e&&e.message?e.message:String(e)};
+  return null;
+ }
+}
+
+function primaryHeading(){
+ const base=primaryHeadingWithoutWmm();
+ if(!finite(base)||!wmmCorrectionEnabled)return base;
+ const result=currentWmmResult();
+ return result&&finite(result.declination)?norm(base+result.declination):base;
+}
+
+function renderWmmStatus(){
+ const base=primaryHeadingWithoutWmm();
+ const result=currentWmmResult();
+ const declination=result&&finite(result.declination)?result.declination:null;
+ const corrected=finite(base)&&finite(declination)?norm(base+declination):null;
+ txt("wmmBaseHeading",finite(base)?base.toFixed(1)+"°":"--");
+ txt("wmmDeclination",finite(declination)?(declination>=0?"+":"")+declination.toFixed(2)+"°":"--");
+ txt("wmmTrueHeading",finite(corrected)?corrected.toFixed(1)+"°":"--");
+ txt("wmmModel",window.WMM2025&&WMM2025.loaded?(WMM2025.model||"WMM2025"):"WMM2025 読込待ち");
+ let message="補正なし（従来どおり）";
+ let cls="status";
+ if(wmmCorrectionEnabled){
+  if(!geo||!finite(geo.lat)||!finite(geo.lon)){message="WMM補正あり：GPS位置待ち";cls="status warn";}
+  else if(!window.WMM2025||!WMM2025.loaded){message="WMM補正あり：係数読込待ち";cls="status warn";}
+  else if(!finite(declination)){message="WMM補正あり：計算できません"+(wmmCache.error?" / "+wmmCache.error:"");cls="status bad";}
+  else{message="WMM補正あり：偏角 "+(declination>=0?"+":"")+declination.toFixed(2)+"° を採用方位へ加算";cls="status ok";}
+ }
+ const statusEl=$("wmmStatus");
+ if(statusEl){statusEl.className=cls;statusEl.textContent=message;}
 }`,
           'primaryHeading'
         );
@@ -285,14 +358,28 @@ function primaryHeading(){
 
         replaceOnce(
           'txt("headingSource",finite(cur.iosHeading)?"iPhoneコンパス + 180°ジャンプ検知補正（試験）":cur.source);txt("compassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");',
-          'txt("headingSource",finite(cur.iosHeading)?"iPhoneコンパス + 180°ジャンプ検知補正（試験）":os==="Android"&&finite(android3dHeading())?"Android 3D姿勢方位（水平=上辺 / 傾斜=カメラ軸）":cur.source);txt("compassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");',
+          'txt("headingSource",finite(cur.iosHeading)?"iPhoneコンパス + 180°ジャンプ検知補正（試験）":os==="Android"&&finite(android3dHeading())?"Android 3D姿勢方位（水平=上辺 / 傾斜=カメラ軸）":cur.source);txt("compassAccuracy",finite(cur.iosAccuracy)?"±"+cur.iosAccuracy.toFixed(1)+"°":"取得不可");renderWmmStatus();',
           'heading source display'
         );
 
         replaceOnce(
           'primary_heading_source:finite(cur.iosHeading)?"ios_webkit_compass_jump_toggle_correction":"os_heading_only",primary_elevation_source:',
-          'primary_heading_source:finite(cur.iosHeading)?"ios_webkit_compass_jump_toggle_correction":os==="Android"&&finite(android3dHeading())?"android_3d_heading_top_camera_hybrid":"os_heading_fallback",android_3d_heading_offset_deg:android3dHeadingState.offset,android_3d_heading_anchor_count:android3dHeadingState.anchorCount,android_3d_anchor_locked:android3dHeadingState.anchorLocked,android_3d_anchor_absolute_heading_deg:android3dHeadingState.anchorAbsoluteHeading,android_3d_heading_axis:android3dHeadingState.lastAxis,android_3d_heading_raw_deg:android3dHeadingState.lastRawHeading,android_3d_heading_horizontal_strength:android3dHeadingState.lastHorizontal,android_pose_event_type:androidOrientationDebug.poseEventType,android_absolute_event_timestamp:androidOrientationDebug.absoluteEventTs,android_motion_hold_remaining_ms:Math.max(0,androidOrientationDebug.motionHoldUntil-performance.now()),primary_elevation_source:',
+          'primary_heading_source:finite(cur.iosHeading)?"ios_webkit_compass_jump_toggle_correction":os==="Android"&&finite(android3dHeading())?"android_3d_heading_top_camera_hybrid":"os_heading_fallback",wmm_correction_enabled:wmmCorrectionEnabled,wmm_model:window.WMM2025&&WMM2025.loaded?(WMM2025.model||"WMM2025"):"",wmm_declination_deg:(currentWmmResult()&&finite(currentWmmResult().declination))?currentWmmResult().declination:null,wmm_base_heading_deg:primaryHeadingWithoutWmm(),wmm_true_heading_deg:wmmCorrectionEnabled?primaryHeading():null,android_3d_heading_offset_deg:android3dHeadingState.offset,android_3d_heading_anchor_count:android3dHeadingState.anchorCount,android_3d_anchor_locked:android3dHeadingState.anchorLocked,android_3d_anchor_absolute_heading_deg:android3dHeadingState.anchorAbsoluteHeading,android_3d_heading_axis:android3dHeadingState.lastAxis,android_3d_heading_raw_deg:android3dHeadingState.lastRawHeading,android_3d_heading_horizontal_strength:android3dHeadingState.lastHorizontal,android_pose_event_type:androidOrientationDebug.poseEventType,android_absolute_event_timestamp:androidOrientationDebug.absoluteEventTs,android_motion_hold_remaining_ms:Math.max(0,androidOrientationDebug.motionHoldUntil-performance.now()),primary_elevation_source:',
           'CSV primary source'
+        );
+
+        replaceOnce(
+          '$("disableAlphaInversion").onchange=()=>{disableAlphaInversion=$("disableAlphaInversion").checked;localStorage.setItem(HCFG,JSON.stringify({disableAlphaInversion}));render()};',
+`$("wmmCorrectionMode").onchange=()=>{
+ wmmCorrectionEnabled=$("wmmCorrectionMode").value==="on";
+ wmmCache={key:"",result:null,error:""};
+ render();
+};
+if(window.WMM2025&&WMM2025.ready){
+ WMM2025.ready.then(()=>{wmmCache={key:"",result:null,error:""};render()}).catch(()=>render());
+}
+$("disableAlphaInversion").onchange=()=>{disableAlphaInversion=$("disableAlphaInversion").checked;localStorage.setItem(HCFG,JSON.stringify({disableAlphaInversion}));render()};`,
+          'WMM correction control'
         );
 
         html = html.replace(
