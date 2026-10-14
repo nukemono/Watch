@@ -41,7 +41,37 @@
 
         replaceOnce(
           'let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""}; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true;',
-          'let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""}; let calibration={horizontal:null,zenith:null}; let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null}; let disableAlphaInversion=true; let android3dHeadingState={offset:null,lastHeading:null,anchorCount:0,anchorLocked:false,anchorAbsoluteHeading:null,lastAxis:"",lastRawHeading:null,lastHorizontal:null}; let androidOrientationDebug={poseEventType:"",absoluteEventTs:null,lastMotionTs:null,motionHoldUntil:0};',
+`let iosHeadingFlipState={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:""};
+let calibration={horizontal:null,zenith:null};
+let headingCalibration={offset:0,enabled:false,rawAtNorth:null,orientationFrameOffset:null};
+let disableAlphaInversion=true;
+
+// Android 3D方位の閾値は挙動を固定するため一箇所で管理する。
+// 数値は v25 の既存値をそのまま名前付き定数へ移しただけで、判定条件は変更しない。
+const ANDROID_DIRECTION_MIN_HORIZONTAL=0.18;
+const ANDROID_ANCHOR_MAX_TILT_DEG=35;
+const ANDROID_ANCHOR_MIN_HORIZONTAL=0.75;
+const ANDROID_ANCHOR_SMOOTHING=0.2;
+const ANDROID_ANCHOR_LOCK_SAMPLES=5;
+const ANDROID_MOTION_HOLD_RATE_DEG_S=8;
+const ANDROID_MOTION_HOLD_MS=3000;
+
+let android3dHeadingState={
+ offset:null,
+ lastHeading:null,
+ anchorCount:0,
+ anchorLocked:false,
+ anchorAbsoluteHeading:null,
+ lastAxis:"",
+ lastRawHeading:null,
+ lastHorizontal:null
+};
+let androidOrientationDebug={
+ poseEventType:"",
+ absoluteEventTs:null,
+ lastMotionTs:null,
+ motionHoldUntil:0
+};`,
           'android state'
         );
 
@@ -67,6 +97,7 @@
  const rawHeading=horizontal>1e-6?norm(Math.atan2(east,north)/rad):null;
  return {east,north,up,horizontal,rawHeading};
 }
+
 function android3dRawDirection(){
  if(os!=="Android")return null;
  const top=topVectorFromOrientation(cur.a,cur.b,cur.g);
@@ -74,47 +105,67 @@ function android3dRawDirection(){
  const topH=top&&finite(top.horizontal)?top.horizontal:0;
  const camH=cam&&finite(cam.horizontal)?cam.horizontal:0;
  let chosen=null,axis="";
+
  // 水平付近は上辺、傾斜が大きいときは背面カメラ軸を使う。
  // 常に水平投影が強い方を選ぶことで、0°付近と90°付近の両方で特異点を避ける。
  if(topH>=camH&&top&&finite(top.rawHeading)){chosen=top;axis="top"}
  else if(cam&&finite(cam.rawHeading)){chosen=cam;axis="camera"}
- if(!chosen||chosen.horizontal<0.18)return null;
+ if(!chosen||chosen.horizontal<ANDROID_DIRECTION_MIN_HORIZONTAL)return null;
+
  android3dHeadingState.lastAxis=axis;
  android3dHeadingState.lastRawHeading=chosen.rawHeading;
  android3dHeadingState.lastHorizontal=chosen.horizontal;
  return {rawHeading:chosen.rawHeading,horizontal:chosen.horizontal,axis,topHorizontal:topH,cameraHorizontal:camH};
 }
+
 function updateAndroid3dHeadingAnchor(){
  if(os!=="Android"||!finite(cur.absAlpha))return;
  const top=topVectorFromOrientation(cur.a,cur.b,cur.g);
  if(!top||!finite(top.rawHeading)||!finite(cur.b))return;
- const b=norm(cur.b),tilt=Math.min(b,360-b);
+
+ const b=norm(cur.b);
+ const tilt=Math.min(b,360-b);
+
  // 北基準は、上辺の水平投影が十分強い水平近傍でのみ作る。
- if(tilt>35||top.horizontal<0.75)return;
+ if(tilt>ANDROID_ANCHOR_MAX_TILT_DEG||top.horizontal<ANDROID_ANCHOR_MIN_HORIZONTAL)return;
  // 激しく動かした直後はAndroid側の絶対方位が収束途中になりやすいため学習しない。
  if(performance.now()<androidOrientationDebug.motionHoldUntil)return;
  // 一度アンカーを確定したら保持する。振った後にabsolute方位が20〜50秒かけて戻る挙動を主値へ追従させない。
  if(android3dHeadingState.anchorLocked)return;
+
  const absoluteHeading=norm(360-cur.absAlpha+screenDeg());
  const target=norm(cd(absoluteHeading,top.rawHeading));
- if(!finite(android3dHeadingState.offset))android3dHeadingState.offset=target;
- else android3dHeadingState.offset=norm(android3dHeadingState.offset+cd(target,android3dHeadingState.offset)*0.2);
+ if(!finite(android3dHeadingState.offset)){
+  android3dHeadingState.offset=target;
+ }else{
+  android3dHeadingState.offset=norm(
+   android3dHeadingState.offset+
+   cd(target,android3dHeadingState.offset)*ANDROID_ANCHOR_SMOOTHING
+  );
+ }
  android3dHeadingState.anchorAbsoluteHeading=absoluteHeading;
  android3dHeadingState.anchorCount++;
- if(android3dHeadingState.anchorCount>=5)android3dHeadingState.anchorLocked=true;
+ if(android3dHeadingState.anchorCount>=ANDROID_ANCHOR_LOCK_SAMPLES){
+  android3dHeadingState.anchorLocked=true;
+ }
 }
+
 function android3dHeading(){
- const d=android3dRawDirection();
- if(!d||!finite(android3dHeadingState.offset))return null;
- const h=norm(d.rawHeading+android3dHeadingState.offset+(headingCalibration.enabled?headingCalibration.offset:0));
- android3dHeadingState.lastHeading=h;
- return h;
+ const direction=android3dRawDirection();
+ if(!direction||!finite(android3dHeadingState.offset))return null;
+ const calibrationOffset=headingCalibration.enabled?headingCalibration.offset:0;
+ const heading=norm(direction.rawHeading+android3dHeadingState.offset+calibrationOffset);
+ android3dHeadingState.lastHeading=heading;
+ return heading;
 }
+
 function primaryHeading(){
- const ih=iphoneHeadingCorrected();
- if(finite(ih))return norm(ih+(headingCalibration.enabled?headingCalibration.offset:0));
- const ah=android3dHeading();
- if(finite(ah))return ah;
+ const iphoneHeading=iphoneHeadingCorrected();
+ if(finite(iphoneHeading)){
+  return norm(iphoneHeading+(headingCalibration.enabled?headingCalibration.offset:0));
+ }
+ const androidHeading=android3dHeading();
+ if(finite(androidHeading))return androidHeading;
  return cur.heading;
 }`,
           'primaryHeading'
@@ -142,11 +193,13 @@ function primaryHeading(){
  };`,
 ` const ori=e=>{
   const isAbsoluteEvent=e.type==="deviceorientationabsolute";
+
   // Androidでは2種類のイベントを混ぜない。
   // deviceorientationabsolute は北基準アンカーだけ更新し、3D姿勢 a/b/g は上書きしない。
   if(os==="Android"&&isAbsoluteEvent){
    if(finite(e.alpha))cur.absAlpha=e.alpha;
    androidOrientationDebug.absoluteEventTs=e.timeStamp;
+
    const ang=screenDeg();
    if(finite(cur.absAlpha)){
     const rawHeading=disableAlphaInversion?norm(cur.absAlpha+ang):norm(360-cur.absAlpha+ang);
@@ -154,36 +207,71 @@ function primaryHeading(){
     cur.heading=norm(rawHeading+(headingCalibration.enabled?headingCalibration.offset:0));
     cur.source=disableAlphaInversion?"絶対方向イベント（反転無効・アンカー専用）":"絶対方向イベント（360-alpha・アンカー専用）";
    }
+
    updateAndroid3dHeadingAnchor();
-   render();sample();return;
+   render();
+   sample();
+   return;
   }
 
-  cur.a=finite(e.alpha)?e.alpha:null;cur.b=finite(e.beta)?e.beta:null;cur.g=finite(e.gamma)?e.gamma:null;cur.absolute=e.absolute===true;cur.oriTs=e.timeStamp;
+  cur.a=finite(e.alpha)?e.alpha:null;
+  cur.b=finite(e.beta)?e.beta:null;
+  cur.g=finite(e.gamma)?e.gamma:null;
+  cur.absolute=e.absolute===true;
+  cur.oriTs=e.timeStamp;
   androidOrientationDebug.poseEventType=e.type;
-  cur.iosHeading=finite(e.webkitCompassHeading)?norm(e.webkitCompassHeading):null;cur.iosAccuracy=finite(e.webkitCompassAccuracy)?e.webkitCompassAccuracy:null;
+
+  cur.iosHeading=finite(e.webkitCompassHeading)?norm(e.webkitCompassHeading):null;
+  cur.iosAccuracy=finite(e.webkitCompassAccuracy)?e.webkitCompassAccuracy:null;
   if(finite(cur.iosHeading))updateIphoneHeadingFlipState(cur.iosHeading);
   if(isAbsoluteEvent&&finite(e.alpha))cur.absAlpha=e.alpha;
+
   const ang=screenDeg();
-  let rawHeading=null;if(finite(cur.iosHeading)){rawHeading=norm(cur.iosHeading+ang);cur.source="iPhoneコンパス"}
-  else if(e.absolute===true&&finite(e.alpha)){rawHeading=disableAlphaInversion?norm(e.alpha+ang):norm(360-e.alpha+ang);cur.source=disableAlphaInversion?"Android絶対方向値（反転無効）":"Android絶対方向値（360-alpha）"}
-  else if(finite(cur.absAlpha)){rawHeading=disableAlphaInversion?norm(cur.absAlpha+ang):norm(360-cur.absAlpha+ang);cur.source=disableAlphaInversion?"絶対方向イベント（反転無効）":"絶対方向イベント（360-alpha）"}
-  else{rawHeading=null;cur.source="北基準方位を確定できず"}
-  cur.rawHeading=rawHeading;cur.heading=finite(rawHeading)?norm(rawHeading+(headingCalibration.enabled?headingCalibration.offset:0)):null;
+  let rawHeading=null;
+  if(finite(cur.iosHeading)){
+   rawHeading=norm(cur.iosHeading+ang);
+   cur.source="iPhoneコンパス";
+  }else if(e.absolute===true&&finite(e.alpha)){
+   rawHeading=disableAlphaInversion?norm(e.alpha+ang):norm(360-e.alpha+ang);
+   cur.source=disableAlphaInversion?"Android絶対方向値（反転無効）":"Android絶対方向値（360-alpha）";
+  }else if(finite(cur.absAlpha)){
+   rawHeading=disableAlphaInversion?norm(cur.absAlpha+ang):norm(360-cur.absAlpha+ang);
+   cur.source=disableAlphaInversion?"絶対方向イベント（反転無効）":"絶対方向イベント（360-alpha）";
+  }else{
+   cur.source="北基準方位を確定できず";
+  }
+
+  cur.rawHeading=rawHeading;
+  cur.heading=finite(rawHeading)?norm(rawHeading+(headingCalibration.enabled?headingCalibration.offset:0)):null;
   cur.camera3d=cameraVectorFromOrientation(cur.a,cur.b,cur.g);
   updateAndroid3dHeadingAnchor();
+
   if(cur.camera3d&&finite(cur.camera3d.rawHeading)){
    if(finite(cur.prev3dHeading))cur.last3dJump=cd(cur.camera3d.rawHeading,cur.prev3dHeading);
    cur.prev3dHeading=cur.camera3d.rawHeading;
   }
-  if(finite(cur.b)&&finite(cur.g)){const vz=-Math.cos(cur.b*rad)*Math.cos(cur.g*rad);cur.elev=Math.max(-90,Math.min(90,Math.asin(vz)/rad))}
-  render();sample()
+  if(finite(cur.b)&&finite(cur.g)){
+   const vz=-Math.cos(cur.b*rad)*Math.cos(cur.g*rad);
+   cur.elev=Math.max(-90,Math.min(90,Math.asin(vz)/rad));
+  }
+
+  render();
+  sample();
  };`,
           'orientation event separation'
         );
 
         replaceOnce(
           'cur.motionInterval=finite(e.interval)?e.interval:null;cur.motTs=e.timeStamp;render();sample()',
-          'cur.motionInterval=finite(e.interval)?e.interval:null;cur.motTs=e.timeStamp;androidOrientationDebug.lastMotionTs=e.timeStamp;const motionRate=Math.max(...[cur.ra,cur.rb,cur.rg].filter(finite).map(Math.abs),0);if(os==="Android"&&motionRate>=8)androidOrientationDebug.motionHoldUntil=performance.now()+3000;render();sample()',
+`cur.motionInterval=finite(e.interval)?e.interval:null;
+  cur.motTs=e.timeStamp;
+  androidOrientationDebug.lastMotionTs=e.timeStamp;
+  const motionRate=Math.max(...[cur.ra,cur.rb,cur.rg].filter(finite).map(Math.abs),0);
+  if(os==="Android"&&motionRate>=ANDROID_MOTION_HOLD_RATE_DEG_S){
+   androidOrientationDebug.motionHoldUntil=performance.now()+ANDROID_MOTION_HOLD_MS;
+  }
+  render();
+  sample()`,
           'motion hold'
         );
 
