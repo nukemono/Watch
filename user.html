@@ -14,86 +14,23 @@ body{margin:0;background:#000;color:#fff;font-family:-apple-system,BlinkMacSyste
 (async()=>{
   const status=document.getElementById('status');
   try{
-    let src=await fetch('iphone-field.html',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('統合検証版の取得に失敗: '+r.status);return r.text();});
+    let src=await fetch('iphone-field.html',{cache:'no-store'}).then(r=>{
+      if(!r.ok) throw new Error('統合検証版の取得に失敗: '+r.status);
+      return r.text();
+    });
+
     const terminal='  document.open();document.write(html);document.close();';
-    if(!src.includes(terminal)) throw new Error('ユーザー版の拡張位置が見つかりません');
+    if(!src.includes(terminal)) throw new Error('統合検証版の出力位置が見つかりません');
 
-    const userCss=`
-html,body{width:100%;height:100%;overflow:hidden;background:#000}
-body{overscroll-behavior:none}
-.wrap{max-width:none!important;width:100%!important;height:100dvh!important;padding:0!important;margin:0!important}
-.user-hide,.user-history-card{display:none!important}
-.user-permission-card{position:fixed!important;inset:0!important;z-index:60!important;margin:0!important;padding:24px!important;border:0!important;border-radius:0!important;background:rgba(0,0,0,.92)!important;display:flex!important;align-items:center!important;justify-content:center!important}
-.user-permission-card.user-permission-done{display:none!important}
-.user-permission-card>h2,.user-permission-card>.row,.user-permission-card>#biasModeBox,.user-permission-card>.statuses{display:none!important}
-.user-permission-card #startBtn{max-width:420px;margin:0!important;padding:16px!important;font-size:16px!important}
-.user-main-card{position:fixed!important;inset:0!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;background:#000!important;overflow:hidden!important}
-.user-main-card>h2,.user-main-card>.grid,#sourceText,#flipText,#gateText{display:none!important}
-.user-main-card .camera{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;aspect-ratio:auto!important;margin:0!important;border-radius:0!important;background:#000!important}
-.user-main-card .camera video{width:100%!important;height:100%!important;object-fit:cover!important}
-.user-main-card .reticle{width:92px!important;height:92px!important}
-.user-main-card .overlay{display:none!important}
-#recordBtn{position:absolute!important;z-index:12!important;left:16px!important;right:16px!important;bottom:calc(16px + env(safe-area-inset-bottom))!important;width:auto!important;margin:0!important;padding:16px 12px!important;border-radius:15px!important;font-size:17px!important;box-shadow:0 6px 24px rgba(0,0,0,.28)!important}
-#recordingBox{position:absolute!important;z-index:13!important;left:16px!important;right:16px!important;bottom:calc(82px + env(safe-area-inset-bottom))!important;background:rgba(0,0,0,.60)!important;padding:10px 12px!important;border-radius:12px!important;color:#fff!important}
-#recordingBox .muted{color:#fff!important}
-#resultCard{position:fixed!important;inset:0!important;z-index:50!important;margin:0!important;border:0!important;border-radius:0!important;background:rgba(0,0,0,.88)!important;color:#fff!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;padding:28px!important;text-align:center!important}
-#resultCard.hidden{display:none!important}
-#resultCard h2{font-size:1rem!important;font-weight:600!important;color:#ddd!important;margin-bottom:14px!important}
-#resultCard .grid{display:block!important;width:100%!important;max-width:420px!important}
-#resultCard .grid .metric{display:none!important}
-#resultCard .grid .metric.user-estimated{display:block!important;border:0!important;background:transparent!important;color:#fff!important;padding:0!important}
-#resultCard .user-estimated .label{font-size:.82rem!important;color:#ddd!important}
-#resultCard .user-estimated .value{font-size:3.2rem!important;line-height:1.15!important;color:#fff!important;margin-top:8px!important}
-#resultCard #resultDetail,#resultCard #downloadBtn,#resultCard #shareLatestBtn{display:none!important}
-#resultCard #againBtn{max-width:420px!important;margin-top:28px!important;padding:15px!important;background:#f59f00!important;color:#111!important}
-#userMenuBtn{position:fixed;z-index:25;left:calc(12px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));width:48px;height:48px;border-radius:50%;border:0;background:rgba(0,0,0,.58);color:#fff;font-size:24px;line-height:1;margin:0;padding:0;box-shadow:none}
-#userMenuBackdrop{position:fixed;inset:0;z-index:35;background:rgba(0,0,0,.38)}
-#userMenuBackdrop.hidden,#userSavedPanel.hidden{display:none!important}
-#userMenuPanel{position:absolute;left:0;top:0;bottom:0;width:min(78vw,320px);padding:calc(76px + env(safe-area-inset-top)) 18px 20px;background:#fff;color:#20242a;box-shadow:8px 0 32px rgba(0,0,0,.25)}
-#userMenuPanel button{margin:0 0 10px;width:100%;background:#f3f4f6;color:#20242a;text-align:left;padding:14px;border-radius:12px}
-#userSavedPanel{position:fixed;inset:0;z-index:45;background:#f4f5f7;color:#20242a;overflow-y:auto;padding:calc(12px + env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom))}
-.user-saved-head{display:flex;align-items:center;gap:10px;position:sticky;top:0;background:#f4f5f7;padding:4px 0 12px;z-index:2}.user-saved-head h2{margin:0;flex:1}.user-saved-head button{width:auto;margin:0;padding:10px 12px}
-#userShareAllBtn{width:100%;margin:0 0 12px;padding:13px;border-radius:12px;background:#eef1f4;color:#20242a}
-.user-session{background:#fff;border:1px solid #dfe3e8;border-radius:14px;padding:14px;margin-bottom:10px}.user-session-title{font-weight:800;font-size:1rem}.user-session-time{font-size:1.3rem;font-weight:800;margin-top:5px}.user-session-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-top:12px}.user-session-actions button{margin:0;padding:10px 6px;font-size:.82rem;border-radius:10px}.user-session-actions .delete{background:#fff0f0;color:#9d2626}.user-log{margin-top:10px;padding:10px;border-radius:10px;background:#f7f8fa;font-size:.73rem;white-space:pre-wrap;word-break:break-word;text-align:left}.user-empty{text-align:center;color:#68707a;padding:48px 12px}
-`;
+    const replacement=[
+      "  html=html.replace('</body>','<script src=\"user-ui.js\"><\\/script>\\n</body>');",
+      terminal
+    ].join('\n');
 
-    const menuHtml=`
-  <button id="userMenuBtn" type="button" aria-label="メニュー">☰</button>
-  <div id="userMenuBackdrop" class="hidden">
-    <div id="userMenuPanel">
-      <button id="userSavedBtn" type="button">保存データ</button>
-      <button id="userMenuCloseBtn" type="button">閉じる</button>
-    </div>
-  </div>
-  <div id="userSavedPanel" class="hidden">
-    <div class="user-saved-head"><button id="userSavedCloseBtn" type="button">←</button><h2>保存データ</h2></div>
-    <button id="userShareAllBtn" type="button">保存済み全データを共有</button>
-    <div id="userSavedList"></div>
-  </div>
-`;
-
-    const patches=[];
-    patches.push({label:'user title',from:'<title>太陽ウォッチ 屋外統合検証 v3 — iPhone / Android</title>',to:'<title>SolarWatch</title>'});
-    patches.push({label:'user css',from:'</style>',to:userCss+'\n</style>'});
-    patches.push({label:'user menu',from:'<div class="wrap">\n  <div class="card">',to:'<div class="wrap">\n'+menuHtml+'  <div class="card user-hide">'});
-    patches.push({label:'permission card',from:'  <div class="card">\n    <h2>測定条件</h2>',to:'  <div class="card user-permission-card">\n    <h2>測定条件</h2>'});
-    patches.push({label:'main card',from:'  <div class="card">\n    <h2>太陽照準</h2>',to:'  <div class="card user-main-card">\n    <h2>太陽照準</h2>'});
-    patches.push({label:'history card',from:'  <div class="card">\n    <h2>保存済みセッション</h2>',to:'  <div class="card user-history-card">\n    <h2>保存済みセッション</h2>'});
-    patches.push({label:'permission button',from:'カメラ・センサー・GPSを開始',to:'カメラ・位置情報・センサーを許可して開始'});
-    patches.push({label:'measure button',from:'<button id="recordBtn" class="primary" disabled>10秒測定 ＋ 時刻推定</button>',to:'<button id="recordBtn" class="primary" disabled>10秒測定</button>'});
-    patches.push({label:'result title',from:'<h2>測定結果</h2>',to:'<h2>推定結果</h2>'});
-    patches.push({label:'estimated metric',from:'<div class="metric"><div class="label">推定時刻</div><div id="estimatedTime" class="value big">--</div></div>',to:'<div class="metric user-estimated"><div class="label">推定時刻</div><div id="estimatedTime" class="value big">--</div></div>'});
-    patches.push({label:'again button',from:'<button id="againBtn" class="secondary">同じ条件でもう一度測る</button>',to:'<button id="againBtn" class="secondary">もう一度測る</button>'});
-    patches.push({label:'record readiness text',from:"    $('recordBtn').disabled=!usable || state.recording;",to:"    $('recordBtn').disabled=!usable || state.recording;\n    if(!state.recording) $('recordBtn').textContent='10秒測定';"});
-    patches.push({label:'user ui script',from:'</body>',to:'<script src=\"user-ui.js\"><\/script>\n</body>'});
-
-    const injected=patches.map(p=>
-      '  if(!html.includes('+JSON.stringify(p.from)+')) throw new Error('+JSON.stringify('ユーザー版パッチ対象が見つかりません: ')+ '+'+JSON.stringify(p.label)+');\n'+
-      '  html=html.replace('+JSON.stringify(p.from)+','+JSON.stringify(p.to)+');'
-    ).join('\n\n')+'\n\n'+terminal;
-
-    src=src.replace(terminal,injected);
-    document.open();document.write(src);document.close();
+    src=src.replace(terminal,replacement);
+    document.open();
+    document.write(src);
+    document.close();
   }catch(e){
     status.className='loading bad';
     status.innerHTML='<div><strong>ユーザー版 読み込みエラー</strong><pre>'+String(e&&e.stack||e)+'</pre></div>';
