@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>太陽ウォッチ 屋外統合検証 v4</title>
+<style>
+body{margin:0;background:#f4f5f7;color:#20242a;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{max-width:640px;margin:auto;padding:20px}.card{background:#fff;border:1px solid #dfe3e8;border-radius:16px;padding:16px}.bad{background:#fff0f0;border-color:#e0aaaa}pre{white-space:pre-wrap;word-break:break-word}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="card" id="status">屋外統合検証 v4 を読み込んでいます…</div></div>
+<script>
+(async()=>{
+  const status=document.getElementById('status');
+  try{
+    let src=await fetch('iphone-field.html',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('統合検証版の取得に失敗: '+r.status);return r.text();});
+    const terminal='  document.open();document.write(html);document.close();';
+    if(!src.includes(terminal)) throw new Error('統合検証版の拡張位置が見つかりません');
+
+    const patches=[];
+    patches.push({
+      label:'diagnostic state',
+      from:'    headingAnchor:{offset:null,count:0,locked:false,absoluteHeading:null},',
+      to:'    headingAnchor:{offset:null,count:0,locked:false,absoluteHeading:null},\n    headingDiagnostics:{startedAtMs:null,startedAtIso:null,lockedAtMs:null,lockedAtIso:null,lockElapsedMs:null,resetCount:0,lastResetAtIso:null},'
+    });
+    patches.push({
+      label:'heading lock timing',
+      from:'    if(state.headingAnchor.count>=HEADING_ANCHOR_LOCK_SAMPLES) state.headingAnchor.locked=true;',
+      to:"    if(state.headingAnchor.count>=HEADING_ANCHOR_LOCK_SAMPLES){\n      state.headingAnchor.locked=true;\n      if(!finite(state.headingDiagnostics.lockedAtMs)){\n        state.headingDiagnostics.lockedAtMs=performance.now();\n        state.headingDiagnostics.lockedAtIso=new Date().toISOString();\n        state.headingDiagnostics.lockElapsedMs=finite(state.headingDiagnostics.startedAtMs)?state.headingDiagnostics.lockedAtMs-state.headingDiagnostics.startedAtMs:null;\n      }\n    }"
+    });
+    patches.push({
+      label:'heading convergence start',
+      from:'        state.headingAnchor={offset:null,count:0,locked:false,absoluteHeading:null};\n        window.addEventListener(\'deviceorientation\',onOrientation,true);',
+      to:"        state.headingAnchor={offset:null,count:0,locked:false,absoluteHeading:null};\n        state.headingDiagnostics.startedAtMs=performance.now();\n        state.headingDiagnostics.startedAtIso=new Date().toISOString();\n        state.headingDiagnostics.lockedAtMs=null;\n        state.headingDiagnostics.lockedAtIso=null;\n        state.headingDiagnostics.lockElapsedMs=null;\n        window.addEventListener('deviceorientation',onOrientation,true);"
+    });
+    patches.push({
+      label:'diagnostic sample fields',
+      from:'      heading_anchor_count:state.headingAnchor.count,',
+      to:"      heading_anchor_count:state.headingAnchor.count,\n      heading_convergence_started_at_iso:state.headingDiagnostics.startedAtIso,\n      heading_convergence_locked_at_iso:state.headingDiagnostics.lockedAtIso,\n      heading_convergence_time_ms:state.headingDiagnostics.lockElapsedMs,\n      heading_reset_count:state.headingDiagnostics.resetCount,\n      heading_last_reset_at_iso:state.headingDiagnostics.lastResetAtIso,"
+    });
+    patches.push({
+      label:'diagnostic controls',
+      from:'    <div id="gateText" class="muted">安定性が1.5秒継続すると測定できます。</div>\n    <button id="recordBtn" class="primary" disabled>10秒測定 ＋ 時刻推定</button>',
+      to:'    <div id="gateText" class="muted">安定性が1.5秒継続すると測定できます。</div>\n    <div id="headingConvergenceText" class="muted mono" style="margin-top:7px">方位収束: センサー開始待ち</div>\n    <button id="resetHeadingBtn" class="secondary" type="button">方位だけ再初期化</button>\n    <button id="recordBtn" class="primary" disabled>10秒測定 ＋ 時刻推定</button>'
+    });
+    patches.push({
+      label:'diagnostic render hook',
+      from:'    const stab=updateStability();',
+      to:'    updateHeadingDiagnosticUi();\n    const stab=updateStability();'
+    });
+
+    const featureCode=`
+  function updateHeadingDiagnosticUi(){
+    const el=$('headingConvergenceText');
+    if(!el) return;
+    const d=state.headingDiagnostics;
+    if(!finite(d.startedAtMs)){
+      el.textContent='方位収束: センサー開始待ち';
+      return;
+    }
+    if(state.headingAnchor.locked&&finite(d.lockElapsedMs)){
+      el.textContent='方位収束: '+(d.lockElapsedMs/1000).toFixed(2)+'秒 / 再初期化 '+d.resetCount+'回';
+      return;
+    }
+    const elapsed=(performance.now()-d.startedAtMs)/1000;
+    el.textContent='方位収束中: '+elapsed.toFixed(1)+'秒 / anchor '+state.headingAnchor.count+'/'+HEADING_ANCHOR_LOCK_SAMPLES+' / 再初期化 '+d.resetCount+'回';
+  }
+
+  function resetHeadingOnly(){
+    if(state.recording){
+      alert('測定中は方位を再初期化できません。');
+      return;
+    }
+    window.removeEventListener('deviceorientation',onOrientation,true);
+    window.removeEventListener('deviceorientationabsolute',onAbsoluteOrientation,true);
+    state.a=null; state.b=null; state.g=null; state.absAlpha=null;
+    state.iosHeading=null; state.iosAccuracy=null;
+    state.camera3d=null; state.baseHeading=null; state.primaryHeading=null;
+    state.headingAnchor={offset:null,count:0,locked:false,absoluteHeading:null};
+    state.flip={active:false,prevRaw:null,lastJump:null,lastJumpElevation:null,toggleCount:0,recoveryCount:0,lastRecoveryReason:''};
+    state.stableHeading=[]; state.stableRotation=[]; state.readySince=null;
+    state.lastStability={ready:false,held:false,headingSd:null,maxRot:null,heldMs:0};
+    state.headingDiagnostics.resetCount++;
+    state.headingDiagnostics.lastResetAtIso=new Date().toISOString();
+    state.headingDiagnostics.startedAtMs=performance.now();
+    state.headingDiagnostics.startedAtIso=new Date().toISOString();
+    state.headingDiagnostics.lockedAtMs=null;
+    state.headingDiagnostics.lockedAtIso=null;
+    state.headingDiagnostics.lockElapsedMs=null;
+    window.addEventListener('deviceorientation',onOrientation,true);
+    window.addEventListener('deviceorientationabsolute',onAbsoluteOrientation,true);
+    setStatus('sensorStatus','センサー: 方位再初期化','warn');
+    updateHeadingDiagnosticUi();
+    render();
+  }
+
+  const resetHeadingBtn=$('resetHeadingBtn');
+  if(resetHeadingBtn) resetHeadingBtn.addEventListener('click',resetHeadingOnly);
+`;
+    patches.push({
+      label:'diagnostic feature code',
+      from:'  renderHistory();\n})();',
+      to:featureCode+'\n  renderHistory();\n})();'
+    });
+
+    const injected=patches.map(p=>
+      '  if(!html.includes('+JSON.stringify(p.from)+')) throw new Error('+JSON.stringify('v4追加パッチ対象が見つかりません: ')+ '+'+JSON.stringify(p.label)+');\n'+
+      '  html=html.replace('+JSON.stringify(p.from)+','+JSON.stringify(p.to)+');'
+    ).join('\n\n')+'\n\n'+terminal;
+
+    src=src.replace(terminal,injected);
+    document.open();document.write(src);document.close();
+  }catch(e){
+    status.className='card bad';
+    status.innerHTML='<strong>統合検証 v4 読み込みエラー</strong><pre>'+String(e&&e.stack||e)+'</pre>';
+  }
+})();
+</script>
+</body>
+</html>
