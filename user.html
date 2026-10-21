@@ -259,8 +259,7 @@ body{overscroll-behavior:none}
       let count=0;
       const timer=setInterval(()=>{
         count++;
-        const video=$('video');
-        if(state.started&&video&&video.srcObject){permissionCard.classList.add('user-permission-done');clearInterval(timer);}
+        if(startButton.disabled&&startButton.textContent==='取得中'){permissionCard.classList.add('user-permission-done');clearInterval(timer);}
         else if(count>=60) clearInterval(timer);
       },250);
     });
