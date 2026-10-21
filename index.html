@@ -18,7 +18,8 @@
     .staged { background:#1971c2; color:#fff; }
     .app { background:#f59f00; color:#111; }
     .field { background:#d9480f; color:#fff; }
-    .tag { display:inline-block; background:#eef1f4; padding:4px 8px; border-radius:999px; font-size:.75rem; margin-right:4px; }
+    .user { background:#111; color:#fff; }
+    .tag { display:inline-block; background:#eef1f4; padding:4px 8px; border-radius:999px; font-size:.75rem; margin-right:4px; margin-bottom:4px; }
   </style>
 </head>
 <body>
@@ -57,10 +58,17 @@
     </div>
 
     <div class="card">
-      <h2>⑤ iPhone 屋外統合検証</h2>
-      <p><span class="tag">iPhone</span><span class="tag">10秒/20Hz</span><span class="tag">MVP時刻推定</span><span class="tag">センサー生データ</span><span class="tag">CSV</span></p>
-      <p>iPhone向け補正を使い、太陽照準中のセンサー生データとMVPの時刻推定結果を同じ測定セッションで保存します。</p>
-      <a class="btn field" href="iphone-field.html">iPhone屋外統合検証を開く</a>
+      <h2>⑤ 屋外統合検証 v4</h2>
+      <p><span class="tag">iPhone / Android</span><span class="tag">canonical姿勢</span><span class="tag">WMM</span><span class="tag">方位収束時間</span><span class="tag">方位再初期化</span><span class="tag">CSV</span></p>
+      <p>従来の統合検証ロジックを保持したまま、方位が利用可能になるまでの収束時間を記録し、ページ全体を再読込せずに方位だけを再初期化できる検証版です。</p>
+      <a class="btn field" href="iphone-field-integrated.html">統合検証 v4 を開く</a>
+    </div>
+
+    <div class="card">
+      <h2>⑥ ユーザー用</h2>
+      <p><span class="tag">カメラ</span><span class="tag">10秒測定</span><span class="tag">推定時刻</span><span class="tag">保存データ</span><span class="tag">共有</span><span class="tag">個別削除</span></p>
+      <p>統合検証版の推定処理をそのまま利用し、通常画面ではカメラ・照準・10秒測定だけを表示します。保存データは左上メニューから確認・共有・個別削除できます。</p>
+      <a class="btn user" href="user.html">ユーザー用を開く</a>
     </div>
   </div>
 </body>
