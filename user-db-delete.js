@@ -44,28 +44,21 @@
       const tx=db.transaction(STORE,'readwrite');
       const store=tx.objectStore(STORE);
       const req=kind==='clear'?store.clear():store.delete(id);
-      const requestDone=new Promise((resolve,reject)=>{
+      await new Promise((resolve,reject)=>{
         req.onsuccess=()=>resolve();
         req.onerror=()=>reject(req.error||tx.error||new Error('削除要求に失敗しました'));
       });
-      await requestDone;
       try{await waitTx(tx);}catch(e){console.warn(e);}
     }finally{db.close();}
   }
 
-  async function verifyOne(id){
-    const rows=await getAll();
-    return !rows.some(row=>row&&row.session_id===id);
-  }
-
-  async function verifyEmpty(){
-    return (await getAll()).length===0;
-  }
+  async function verifyOne(id){return !(await getAll()).some(row=>row&&row.session_id===id)}
+  async function verifyEmpty(){return (await getAll()).length===0}
 
   async function deleteOne(id){
     for(let attempt=0;attempt<2;attempt++){
       await mutate('delete',id);
-      if(await verifyOne(id)) return true;
+      if(await verifyOne(id))return true;
     }
     return false;
   }
@@ -73,17 +66,28 @@
   async function clearAll(){
     for(let attempt=0;attempt<2;attempt++){
       await mutate('clear');
-      if(await verifyEmpty()) return true;
+      if(await verifyEmpty())return true;
     }
     return false;
   }
 
-  function sessionIdFromCard(card){
-    const pre=card?.querySelector('pre.user-log');
+  async function sessionIdFromCard(card){
+    if(!card)return null;
+    if(card.dataset.sessionId)return card.dataset.sessionId;
+
+    const pre=card.querySelector('pre.user-log');
     if(pre){
       try{const data=JSON.parse(pre.textContent);if(data?.session_id)return data.session_id;}catch{}
     }
-    return null;
+
+    const displayed=(card.querySelector('.user-session-title')?.textContent||'').trim();
+    if(!displayed)return null;
+    const rows=await getAll();
+    const matches=rows.filter(row=>{
+      const d=row?.created_at?new Date(row.created_at):null;
+      return d&&!Number.isNaN(d.getTime())&&d.toLocaleString('ja-JP')===displayed;
+    });
+    return matches.length===1?matches[0].session_id:null;
   }
 
   function setEmptyUi(){
@@ -93,18 +97,14 @@
     if(list){
       list.replaceChildren();
       const empty=document.createElement('div');
-      empty.className='user-empty';
-      empty.textContent='保存データはありません。';
-      list.appendChild(empty);
+      empty.className='user-empty';empty.textContent='保存データはありません。';list.appendChild(empty);
     }
   }
 
   async function refreshList(){
     const rows=await getAll();
-    const count=$('userSavedCount');
-    if(count)count.textContent='保存 '+rows.length+'件';
-    if(!rows.length){setEmptyUi();return;}
-    // 既存user-ui.jsの描画関数は外部公開されていないため、削除成功したカードだけ除去する。
+    const count=$('userSavedCount');if(count)count.textContent='保存 '+rows.length+'件';
+    if(!rows.length)setEmptyUi();
   }
 
   document.addEventListener('click',async event=>{
@@ -114,8 +114,7 @@
       if(!confirm('保存済みの測定データをすべて削除しますか？\nこの操作は取り消せません。'))return;
       allBtn.disabled=true;allBtn.textContent='削除中…';
       try{
-        const ok=await clearAll();
-        if(!ok)throw new Error('削除後もデータが残っています');
+        if(!await clearAll())throw new Error('削除後もデータが残っています');
         setEmptyUi();
       }catch(err){
         console.error('clear all failed',err);
@@ -130,13 +129,12 @@
     if(oneBtn){
       event.preventDefault();event.stopImmediatePropagation();
       const card=oneBtn.closest('.user-session');
-      const id=sessionIdFromCard(card);
+      const id=await sessionIdFromCard(card);
       if(!id){alert('削除対象のデータIDを取得できませんでした。');return;}
       if(!confirm('この測定データを削除しますか？\n削除すると元に戻せません。'))return;
       oneBtn.disabled=true;oneBtn.textContent='削除中…';
       try{
-        const ok=await deleteOne(id);
-        if(!ok)throw new Error('削除後も対象データが残っています');
+        if(!await deleteOne(id))throw new Error('削除後も対象データが残っています');
         card?.remove();
         await refreshList();
       }catch(err){
