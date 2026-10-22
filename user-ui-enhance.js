@@ -1,161 +1,51 @@
 (()=>{
   'use strict';
   const DB_NAME='solarwatch_iphone_field_v1',STORE='sessions',$=id=>document.getElementById(id);
-  const MOTION_LIMIT=100,MOTION_WAIT_MS=450,UI_POLL_MS=250;
+  const MOTION_LIMIT=100,MOTION_WAIT_MS=450,UI_POLL_MS=300;
   let motionBlockedUntil=0,releaseTimer=null,pollTimer=null;
 
   const CSS=`
 #userMeasureStatus{position:absolute;z-index:22;left:24px;right:24px;top:50%;transform:translateY(-50%);padding:22px 18px;border-radius:18px;background:rgba(0,0,0,.74);color:#fff;text-align:center;line-height:1.45;pointer-events:none}
-#userMeasureStatus strong{display:block;font-size:1.35rem;font-weight:850}
-#userMeasureStatus span{display:block;margin-top:7px;font-size:.82rem;color:#eee}
-#userMeasureStatus.ready{display:none!important}
-#userMeasureStatus.bad{background:rgba(157,38,38,.9)}
-#recordBtn.user-motion-blocked{opacity:.45!important}
-#userSaveState.pending{background:rgba(245,159,0,.18)!important;color:#ffe7a8!important}
-#userSaveState.saved{background:rgba(8,127,91,.38)!important;color:#dff8ea!important}
-#userSaveState.error{background:rgba(184,50,50,.34)!important;color:#ffdada!important}
-#userSavedCount{font-size:.82rem;font-weight:700;color:#68707a;margin:-4px 0 12px}
-.user-saved-head{z-index:100!important;pointer-events:auto!important}
+#userMeasureStatus strong{display:block;font-size:1.35rem;font-weight:850}#userMeasureStatus span{display:block;margin-top:7px;font-size:.82rem;color:#eee}
+#userMeasureStatus.ready{display:none!important}#userMeasureStatus.bad{background:rgba(157,38,38,.9)}#recordBtn.user-motion-blocked{opacity:.45!important}
+#userSaveState.pending{background:rgba(245,159,0,.18)!important;color:#ffe7a8!important}#userSaveState.saved{background:rgba(8,127,91,.38)!important;color:#dff8ea!important}#userSaveState.error{background:rgba(184,50,50,.34)!important;color:#ffdada!important}
+#userSavedCount{font-size:.82rem;font-weight:700;color:#68707a;margin:-4px 0 12px}.user-saved-head{z-index:100!important;pointer-events:auto!important}
 #userSavedCloseBtn{position:relative!important;z-index:101!important;pointer-events:auto!important;touch-action:manipulation!important;min-width:48px!important;min-height:44px!important}
 pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!important;padding:0!important;border:1px solid #e5e8ec!important;background:#f7f8fa!important;overflow:hidden!important}
-.user-readable-log .log-head{display:block;padding:10px 12px;background:#fff;font-weight:800}
-.user-readable-log .log-row{display:grid;grid-template-columns:minmax(110px,42%) 1fr;gap:10px;padding:9px 12px;border-top:1px solid #eceff2;font-size:.82rem}
-.user-readable-log .log-label{color:#68707a}.user-readable-log .log-value{font-weight:650;text-align:right}
-.user-readable-log .log-note{display:block;padding:10px 12px;font-size:.76rem;color:#68707a;border-top:1px solid #eceff2;background:#fff}
-`;
+.user-readable-log .log-head{display:block;padding:10px 12px;background:#fff;font-weight:800}.user-readable-log .log-row{display:grid;grid-template-columns:minmax(110px,42%) 1fr;gap:10px;padding:9px 12px;border-top:1px solid #eceff2;font-size:.82rem}
+.user-readable-log .log-label{color:#68707a}.user-readable-log .log-value{font-weight:650;text-align:right}.user-readable-log .log-note{display:block;padding:10px 12px;font-size:.76rem;color:#68707a;border-top:1px solid #eceff2;background:#fff}`;
 
-  function addStyles(){
-    if($('solarwatchUserEnhanceStyle'))return;
-    const s=document.createElement('style');s.id='solarwatchUserEnhanceStyle';s.textContent=CSS;document.head.appendChild(s);
-  }
-
+  function addStyles(){if($('solarwatchUserEnhanceStyle'))return;const s=document.createElement('style');s.id='solarwatchUserEnhanceStyle';s.textContent=CSS;document.head.appendChild(s)}
   function openDb(){return new Promise((resolve,reject)=>{const req=indexedDB.open(DB_NAME,1);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}
-
-  async function updateSavedCount(){
-    const el=$('userSavedCount');if(!el)return;
-    try{
-      const db=await openDb();
-      const count=await new Promise((resolve,reject)=>{const req=db.transaction(STORE,'readonly').objectStore(STORE).count();req.onsuccess=()=>resolve(req.result||0);req.onerror=()=>reject(req.error)});
-      db.close();
-      const text='保存 '+count+'件';if(el.textContent!==text)el.textContent=text;
-    }catch(e){console.error(e);if(el.textContent!=='保存件数を取得できませんでした')el.textContent='保存件数を取得できませんでした'}
-  }
-
-  function ensureSavedCount(){
-    if($('userSavedCount'))return;
-    const share=$('userShareAllBtn');if(!share)return;
-    const el=document.createElement('div');el.id='userSavedCount';el.textContent='保存 0件';share.parentNode.insertBefore(el,share);
-  }
+  async function updateSavedCount(){const el=$('userSavedCount');if(!el)return;try{const db=await openDb();const count=await new Promise((resolve,reject)=>{const req=db.transaction(STORE,'readonly').objectStore(STORE).count();req.onsuccess=()=>resolve(req.result||0);req.onerror=()=>reject(req.error)});db.close();const text='保存 '+count+'件';if(el.textContent!==text)el.textContent=text}catch(e){console.error(e);el.textContent='保存件数を取得できませんでした'}}
+  function ensureSavedCount(){if($('userSavedCount'))return;const share=$('userShareAllBtn');if(!share)return;const el=document.createElement('div');el.id='userSavedCount';el.textContent='保存 0件';share.parentNode.insertBefore(el,share)}
 
   function currentRotation(){const m=(($('rotationRate')?.textContent||'')).match(/-?\d+(?:\.\d+)?/);return m?Number(m[0]):null}
   function isRecording(){const b=$('recordingBox');return !!(b&&!b.classList.contains('hidden'))}
   function motionBlocked(){return performance.now()<motionBlockedUntil}
+  function sampleMotion(){const r=currentRotation();if(Number.isFinite(r)&&r>=MOTION_LIMIT){motionBlockedUntil=performance.now()+MOTION_WAIT_MS;if(releaseTimer)clearTimeout(releaseTimer);releaseTimer=setTimeout(()=>{releaseTimer=null;updateStatus()},MOTION_WAIT_MS+40)}}
 
-  function sampleMotion(){
-    const r=currentRotation();
-    if(Number.isFinite(r)&&r>=MOTION_LIMIT){
-      motionBlockedUntil=performance.now()+MOTION_WAIT_MS;
-      if(releaseTimer)clearTimeout(releaseTimer);
-      releaseTimer=setTimeout(()=>{releaseTimer=null;updateStatus()},MOTION_WAIT_MS+40);
-    }
-  }
+  function ensureStatus(){const btn=$('recordBtn');if(!btn)return null;let box=$('userMeasureStatus');if(!box){box=document.createElement('div');box.id='userMeasureStatus';box.setAttribute('aria-live','polite');btn.parentNode.insertBefore(box,btn)}return box}
+  function stateText(){const gate=($('gateText')?.textContent||'').trim(),camera=($('cameraStatus')?.textContent||'').trim(),sensor=($('sensorStatus')?.textContent||'').trim(),gps=($('gpsStatus')?.textContent||'').trim(),btn=$('recordBtn');if(isRecording())return null;if(/失敗|停止|不可/.test(camera))return['カメラを利用できません','開始ボタンから再取得してください。','bad'];if(/失敗|許可されません/.test(sensor))return['センサーを利用できません','ブラウザの許可状態を確認してください。','bad'];if(/非対応|denied|permission/i.test(gps))return['位置情報を利用できません','ブラウザの許可状態を確認してください。','bad'];if(motionBlocked())return['スマホを静かにしてお待ちください','大きく動かした直後なので、少しだけ待っています。','warn'];if(btn&&!btn.disabled&&/^測定できます/.test(gate))return['測定できます','','ready'];if(/GPS待機/.test(gate)||/GPS:\s*待機/.test(gps))return['スマホを水平にしてお待ちください','位置情報を取得しています。','warn'];if(/GPS精度/.test(gate))return['スマホを水平にしてお待ちください','位置情報が安定するまで待っています。','warn'];if(/水平|北基準/.test(gate))return['スマホを水平にしてお待ちください','方位の基準を準備しています。','warn'];if(/WMM|偏角/.test(gate))return['スマホを水平にしてお待ちください','方位を準備しています。','warn'];return['スマホを水平にしてお待ちください','測定の準備をしています。','warn']}
+  function updateStatus(){sampleMotion();const btn=$('recordBtn');if(btn)btn.classList.toggle('user-motion-blocked',motionBlocked()&&!isRecording());const box=ensureStatus();if(!box)return;const info=stateText();if(!info){box.style.display='none';return}box.style.display='block';box.className=info[2];const oldTitle=box.querySelector('strong')?.textContent||'',oldDetail=box.querySelector('span')?.textContent||'';if(oldTitle===info[0]&&oldDetail===info[1])return;box.replaceChildren();const t=document.createElement('strong');t.textContent=info[0];box.appendChild(t);if(info[1]){const d=document.createElement('span');d.textContent=info[1];box.appendChild(d)}}
 
-  function ensureStatus(){
-    const btn=$('recordBtn');if(!btn)return null;
-    let box=$('userMeasureStatus');
-    if(!box){box=document.createElement('div');box.id='userMeasureStatus';box.setAttribute('aria-live','polite');btn.parentNode.insertBefore(box,btn)}
-    return box;
-  }
+  function syncSaveState(){const btn=$('userSaveResultBtn'),state=$('userSaveState');if(!btn||!state)return;state.classList.remove('pending','saved','error');const text=state.textContent.trim();if(btn.textContent.trim()==='保存しました'||/保存しました/.test(text)){state.classList.add('saved');if(state.textContent!=='✓ 履歴に保存しました。')state.textContent='✓ 履歴に保存しました。';return}if(/失敗|できません|取得できません/.test(text)){state.classList.add('error');return}if(!btn.disabled&&btn.textContent.trim()==='履歴に保存'){state.classList.add('pending');if(!text)state.textContent='この結果はまだ履歴に保存されていません。'}}
 
-  function stateText(){
-    const gate=($('gateText')?.textContent||'').trim(),camera=($('cameraStatus')?.textContent||'').trim(),sensor=($('sensorStatus')?.textContent||'').trim(),gps=($('gpsStatus')?.textContent||'').trim(),btn=$('recordBtn');
-    if(isRecording())return null;
-    if(/失敗|停止|不可/.test(camera))return['カメラを利用できません','開始ボタンから再取得してください。','bad'];
-    if(/失敗|許可されません/.test(sensor))return['センサーを利用できません','ブラウザの許可状態を確認してください。','bad'];
-    if(/非対応|denied|permission/i.test(gps))return['位置情報を利用できません','ブラウザの許可状態を確認してください。','bad'];
-    if(motionBlocked())return['スマホを静かにしてお待ちください','大きく動かした直後なので、少しだけ待っています。','warn'];
-    if(btn&&!btn.disabled&&/^測定できます/.test(gate))return['測定できます','','ready'];
-    if(/GPS待機/.test(gate)||/GPS:\s*待機/.test(gps))return['スマホを水平にしてお待ちください','位置情報を取得しています。','warn'];
-    if(/GPS精度/.test(gate))return['スマホを水平にしてお待ちください','位置情報が安定するまで待っています。','warn'];
-    if(/水平|北基準/.test(gate))return['スマホを水平にしてお待ちください','方位の基準を準備しています。','warn'];
-    if(/WMM|偏角/.test(gate))return['スマホを水平にしてお待ちください','方位を準備しています。','warn'];
-    return['スマホを水平にしてお待ちください','測定の準備をしています。','warn'];
-  }
-
-  function updateStatus(){
-    sampleMotion();
-    const btn=$('recordBtn');if(btn)btn.classList.toggle('user-motion-blocked',motionBlocked()&&!isRecording());
-    const box=ensureStatus();if(!box)return;
-    const info=stateText();if(!info){box.style.display='none';return}
-    box.style.display='block';box.className=info[2];
-    const currentTitle=box.querySelector('strong')?.textContent||'';
-    const currentDetail=box.querySelector('span')?.textContent||'';
-    if(currentTitle===info[0]&&currentDetail===info[1])return;
-    box.replaceChildren();
-    const t=document.createElement('strong');t.textContent=info[0];box.appendChild(t);
-    if(info[1]){const d=document.createElement('span');d.textContent=info[1];box.appendChild(d)}
-  }
-
-  function syncSaveState(){
-    const btn=$('userSaveResultBtn'),state=$('userSaveState');if(!btn||!state)return;
-    state.classList.remove('pending','saved','error');
-    const text=state.textContent.trim();
-    if(btn.textContent.trim()==='保存しました'||/保存しました/.test(text)){state.classList.add('saved');if(state.textContent!=='✓ 履歴に保存しました。')state.textContent='✓ 履歴に保存しました。';return}
-    if(/失敗|できません|取得できません/.test(text)){state.classList.add('error');return}
-    if(!btn.disabled&&btn.textContent.trim()==='履歴に保存'){state.classList.add('pending');if(!text)state.textContent='この結果はまだ履歴に保存されていません。'}
-  }
-
-  function readableLog(pre){
-    if(!pre||pre.dataset.readable==='1')return;
-    let data;try{data=JSON.parse(pre.textContent)}catch{return}
-    const n=(v,d=1,s='')=>Number.isFinite(v)?v.toFixed(d)+s:'--',dt=v=>{const d=v?new Date(v):null;return d&&!Number.isNaN(d.getTime())?d.toLocaleString('ja-JP'):'--'},tm=v=>{const d=v?new Date(v):null;return d&&!Number.isNaN(d.getTime())?d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'--'};
-    const rows=[['測定日時',dt(data.created_at)],['推定時刻',tm(data.estimated_time_iso)],['測定状態',data.measurement_valid===false?'注意あり':'正常'],['GPS精度',n(data.gps_accuracy_m,1,' m')],['観測方位',n(data.observed_azimuth_deg,1,'°')],['観測高度',n(data.observed_elevation_deg,1,'°')],['方位のばらつき',n(data.heading_sd_deg,1,'°')],['高度のばらつき',n(data.elevation_sd_deg,1,'°')],['角度残差',n(data.angular_residual_deg,1,'°')]];
-    pre.dataset.readable='1';pre.classList.add('user-readable-log');pre.textContent='';
-    const h=document.createElement('span');h.className='log-head';h.textContent='測定ログ';pre.appendChild(h);
-    for(const [label,value] of rows){const r=document.createElement('span');r.className='log-row';const l=document.createElement('span');l.className='log-label';l.textContent=label;const v=document.createElement('span');v.className='log-value';v.textContent=value;r.append(l,v);pre.appendChild(r)}
-    const note=document.createElement('span');note.className='log-note';note.textContent='詳細な生データは共有CSVに含まれます。';pre.appendChild(note);
-  }
-
-  function enhanceSavedList(){
-    ensureSavedCount();updateSavedCount();
-    document.querySelectorAll('.user-session').forEach(card=>{
-      const buttons=[...card.querySelectorAll('.user-session-actions button')];
-      if(buttons[0]){const wanted=card.querySelector('.user-log')?.classList.contains('hidden')?'ログを見る':'ログを閉じる';if(buttons[0].textContent!==wanted)buttons[0].textContent=wanted}
-      if(buttons[2]&&buttons[2].textContent!=='1件削除')buttons[2].textContent='1件削除';
-      readableLog(card.querySelector('pre.user-log'));
-    });
-  }
-
-  function closeSavedPanel(){
-    const panel=$('userSavedPanel');if(panel)panel.classList.add('hidden');
-  }
+  function readableLog(pre){if(!pre||pre.dataset.readable==='1')return;let data;try{data=JSON.parse(pre.textContent)}catch{return}const n=(v,d=1,s='')=>Number.isFinite(v)?v.toFixed(d)+s:'--',dt=v=>{const d=v?new Date(v):null;return d&&!Number.isNaN(d.getTime())?d.toLocaleString('ja-JP'):'--'},tm=v=>{const d=v?new Date(v):null;return d&&!Number.isNaN(d.getTime())?d.toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'--'};const rows=[['測定日時',dt(data.created_at)],['推定時刻',tm(data.estimated_time_iso)],['測定状態',data.measurement_valid===false?'注意あり':'正常'],['GPS精度',n(data.gps_accuracy_m,1,' m')],['観測方位',n(data.observed_azimuth_deg,1,'°')],['観測高度',n(data.observed_elevation_deg,1,'°')],['方位のばらつき',n(data.heading_sd_deg,1,'°')],['高度のばらつき',n(data.elevation_sd_deg,1,'°')],['角度残差',n(data.angular_residual_deg,1,'°')]];pre.dataset.readable='1';pre.classList.add('user-readable-log');pre.textContent='';const h=document.createElement('span');h.className='log-head';h.textContent='測定ログ';pre.appendChild(h);for(const [label,value] of rows){const r=document.createElement('span');r.className='log-row';const l=document.createElement('span');l.className='log-label';l.textContent=label;const v=document.createElement('span');v.className='log-value';v.textContent=value;r.append(l,v);pre.appendChild(r)}const note=document.createElement('span');note.className='log-note';note.textContent='詳細な生データは共有CSVに含まれます。';pre.appendChild(note)}
+  function enhanceSavedList(){ensureSavedCount();updateSavedCount();document.querySelectorAll('.user-session').forEach(card=>{const buttons=[...card.querySelectorAll('.user-session-actions button')];if(buttons[0]){const wanted=card.querySelector('.user-log')?.classList.contains('hidden')?'ログを見る':'ログを閉じる';if(buttons[0].textContent!==wanted)buttons[0].textContent=wanted}if(buttons[2]&&buttons[2].textContent!=='1件削除')buttons[2].textContent='1件削除';readableLog(card.querySelector('pre.user-log'))})}
+  function closeSavedPanel(){const panel=$('userSavedPanel');if(panel)panel.classList.add('hidden')}
 
   function init(){
     addStyles();ensureSavedCount();
-
     $('recordBtn')?.addEventListener('click',event=>{sampleMotion();if(!motionBlocked())return;event.preventDefault();event.stopImmediatePropagation();updateStatus()},true);
-
     $('userSavedCloseBtn')?.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();closeSavedPanel()},true);
     $('userSavedBtn')?.addEventListener('click',()=>setTimeout(enhanceSavedList,0));
-
-    document.addEventListener('click',event=>{
-      if(event.target?.closest?.('#userSavedCloseBtn')){event.preventDefault();closeSavedPanel();return}
-      if(event.target?.closest?.('#userSavedList'))setTimeout(enhanceSavedList,80);
-    },true);
-
-    pollTimer=setInterval(()=>{
-      if(document.hidden)return;
-      updateStatus();syncSaveState();
-      const panel=$('userSavedPanel');if(panel&&!panel.classList.contains('hidden'))enhanceSavedList();
-    },UI_POLL_MS);
-
+    document.addEventListener('click',event=>{if(event.target?.closest?.('#userSavedCloseBtn')){event.preventDefault();closeSavedPanel();return}if(event.target?.closest?.('#userSavedList'))setTimeout(enhanceSavedList,80)},true);
+    pollTimer=setInterval(()=>{if(document.hidden)return;updateStatus();syncSaveState()},UI_POLL_MS);
     updateStatus();syncSaveState();enhanceSavedList();
-    const shield=$('userBootShield');
-    if($('userMenuBtn')&&$('recordBtn'))shield?.remove();
-    else if(shield){shield.textContent='ユーザー画面の初期化に失敗しました。';shield.classList.add('bad')}
+    const shield=$('userBootShield');if($('userMenuBtn')&&$('recordBtn'))shield?.remove();else if(shield){shield.textContent='ユーザー画面の初期化に失敗しました。';shield.classList.add('bad')}
   }
 
   window.addEventListener('pagehide',()=>{if(pollTimer){clearInterval(pollTimer);pollTimer=null}if(releaseTimer){clearTimeout(releaseTimer);releaseTimer=null}},{once:true});
-
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
