@@ -14,23 +14,28 @@ body{margin:0;background:#000;color:#fff;font-family:-apple-system,BlinkMacSyste
 (async()=>{
   const status=document.getElementById('status');
   try{
-    let src=await fetch('iphone-field.html',{cache:'no-store'}).then(r=>{
+    const source=await fetch('iphone-field.html',{cache:'no-store'}).then(r=>{
       if(!r.ok) throw new Error('統合検証版の取得に失敗: '+r.status);
       return r.text();
     });
 
+    const parsed=new DOMParser().parseFromString(source,'text/html');
+    const loader=[...parsed.scripts].find(script=>script.textContent.includes('document.open();document.write(html);document.close();'));
+    if(!loader) throw new Error('統合検証版の実行処理が見つかりません');
+
+    let code=loader.textContent;
     const terminal='  document.open();document.write(html);document.close();';
-    if(!src.includes(terminal)) throw new Error('統合検証版の出力位置が見つかりません');
+    if(!code.includes(terminal)) throw new Error('統合検証版の出力位置が見つかりません');
 
     const replacement=[
-      "  html=html.replace('</body>','<script src=\"user-ui.js\"><\\/script>\\n<script src=\"user-ui-enhance.js\"><\\/script>\\n</body>');",
+      "  html=html.replace('</body>','<script src=\"user-ui.js\"><\\/script>\\n<script src=\"user-ui-enhance.js\"><\\/script>\\n<script src=\"user-recovery.js\"><\\/script>\\n</body>');",
       terminal
     ].join('\n');
 
-    src=src.replace(terminal,replacement);
-    document.open();
-    document.write(src);
-    document.close();
+    code=code.replace(terminal,replacement);
+    const runner=document.createElement('script');
+    runner.textContent=code;
+    document.body.appendChild(runner);
   }catch(e){
     status.className='loading bad';
     status.innerHTML='<div><strong>ユーザー版 読み込みエラー</strong><pre>'+String(e&&e.stack||e)+'</pre></div>';
