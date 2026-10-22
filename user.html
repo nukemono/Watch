@@ -31,7 +31,7 @@ body{margin:0;background:#000;color:#fff;font-family:-apple-system,BlinkMacSyste
       "  html=html.replace('<body>','<body><div id=\"userBootShield\" class=\"loading\" style=\"position:fixed;inset:0;z-index:9999;background:#000;color:#fff;display:grid;place-items:center;padding:24px;text-align:center\">SolarWatch を準備しています…</div>');",
       "  html=html.replace(\"  function startGps(){\\n    if(!navigator.geolocation){ setStatus('gpsStatus','GPS: 非対応','bad'); return; }\\n    state.geoWatch=navigator.geolocation.watchPosition\",\"  function startGps(){\\n    if(!navigator.geolocation){ setStatus('gpsStatus','GPS: 非対応','bad'); return; }\\n    if(state.geoWatch!==null){ navigator.geolocation.clearWatch(state.geoWatch); state.geoWatch=null; }\\n    state.geoWatch=navigator.geolocation.watchPosition\");",
       "  html=html.replace(\"      await startCamera();\\n      startGps();\\n      $('startBtn').textContent='取得中';\",\"      await startCamera();\\n      if(!$('cameraStatus').classList.contains('ok')){ $('startBtn').disabled=false; $('startBtn').textContent='カメラを再取得'; return; }\\n      startGps();\\n      $('startBtn').textContent='取得中';\");",
-      "  html=html.replace('</body>','<script src=\"user-ui.js?v=20261022e\"><\\/script>\\n<script src=\"user-ui-enhance.js?v=20261022e\"><\\/script>\\n</body>');",
+      "  html=html.replace('</body>','<script src=\"user-ui.js?v=20261022f\"><\\/script>\\n<script src=\"user-ui-enhance.js?v=20261022f\"><\\/script>\\n<script src=\"user-delete-all.js?v=20261022f\"><\\/script>\\n</body>');",
       terminal
     ].join('\n');
 
