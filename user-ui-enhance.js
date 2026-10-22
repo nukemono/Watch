@@ -4,7 +4,11 @@
   const DB_NAME='solarwatch_iphone_field_v1';
   const STORE='sessions';
   const $=id=>document.getElementById(id);
+  const USER_MOTION_BLOCK_THRESHOLD_DEG_S=45;
+  const USER_MOTION_BLOCK_MS=1000;
   let countRefreshSerial=0;
+  let motionBlockedUntil=0;
+  let motionReleaseTimer=null;
 
   const CSS=`
 #userMeasureStatus{position:absolute;z-index:22;left:24px;right:24px;top:50%;transform:translateY(-50%);padding:22px 18px;border-radius:18px;background:rgba(0,0,0,.74);color:#fff;text-align:center;line-height:1.45;box-shadow:0 10px 36px rgba(0,0,0,.28);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);pointer-events:none}
@@ -96,20 +100,42 @@ pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!
     return !!(recordingBox&&!recordingBox.classList.contains('hidden'));
   }
 
-  function stabilityGood(){
-    const ready=$('readyStatus');
-    if(!ready) return false;
-    return ready.classList.contains('ok')||/安定性:\s*良好/.test(ready.textContent||'');
-  }
-
   function coreMeasurementReady(){
     const gateText=($('gateText')?.textContent||'').trim();
     return /^測定できます/.test(gateText);
   }
 
+  function currentRotationRate(){
+    const text=($('rotationRate')?.textContent||'').trim();
+    const match=text.match(/-?\d+(?:\.\d+)?/);
+    return match?Number(match[0]):null;
+  }
+
+  function scheduleMotionRelease(){
+    if(motionReleaseTimer) clearTimeout(motionReleaseTimer);
+    const wait=Math.max(0,motionBlockedUntil-performance.now()+30);
+    motionReleaseTimer=setTimeout(()=>{
+      motionReleaseTimer=null;
+      updateMeasureStatus();
+    },wait);
+  }
+
+  function updateMotionBlock(){
+    const rotation=currentRotationRate();
+    if(Number.isFinite(rotation)&&rotation>=USER_MOTION_BLOCK_THRESHOLD_DEG_S){
+      motionBlockedUntil=performance.now()+USER_MOTION_BLOCK_MS;
+      scheduleMotionRelease();
+    }
+  }
+
+  function motionBlocked(){
+    return performance.now()<motionBlockedUntil;
+  }
+
   function canUserMeasure(){
     if(isRecording()) return false;
-    return stabilityGood()&&coreMeasurementReady();
+    updateMotionBlock();
+    return coreMeasurementReady()&&!motionBlocked();
   }
 
   function friendlyMeasureState(){
@@ -117,20 +143,18 @@ pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!
     const cameraText=($('cameraStatus')?.textContent||'').trim();
     const sensorText=($('sensorStatus')?.textContent||'').trim();
     const gpsText=($('gpsStatus')?.textContent||'').trim();
-    const readyText=($('readyStatus')?.textContent||'').trim();
 
     if(isRecording()) return {recording:true,title:'',detail:'',kind:''};
     if(/失敗|停止|不可/.test(cameraText)) return {title:'カメラを利用できません',detail:'ブラウザのカメラ許可状態を確認してください。',kind:'bad'};
     if(/失敗|許可されません/.test(sensorText)) return {title:'センサーを利用できません',detail:'ブラウザのセンサー許可状態を確認してください。',kind:'bad'};
     if(/非対応|denied|permission/i.test(gpsText)) return {title:'位置情報を利用できません',detail:'ブラウザの位置情報許可状態を確認してください。',kind:'bad'};
-    if(canUserMeasure()) return {title:'測定できます',detail:'',kind:'ready'};
+    if(motionBlocked()) return {title:'スマホを静かにしてお待ちください',detail:'大きく動かした直後なので、少しだけ待っています。',kind:'warn'};
+    if(coreMeasurementReady()) return {title:'測定できます',detail:'',kind:'ready'};
     if(/GPS待機/.test(gateText)||/GPS:\s*待機/.test(gpsText)) return {title:'スマホを水平にしてお待ちください',detail:'位置情報を取得しています。',kind:'warn'};
     if(/GPS精度/.test(gateText)) return {title:'スマホを水平にしてお待ちください',detail:'位置情報が安定するまで待っています。',kind:'warn'};
     if(/水平|北基準/.test(gateText)) return {title:'スマホを水平にしてお待ちください',detail:'方位の基準を準備しています。',kind:'warn'};
     if(/WMM|偏角/.test(gateText)) return {title:'スマホを水平にしてお待ちください',detail:'方位を準備しています。',kind:'warn'};
     if(/3D方位|canonical|方位・高度|取得待ち/.test(gateText)) return {title:'スマホを水平にしてお待ちください',detail:'端末の向きを取得しています。',kind:'warn'};
-    if(/安定中/.test(readyText)) return {title:'スマホを静かにしてお待ちください',detail:'測定できる状態になるまで安定を確認しています。',kind:'warn'};
-    if(!stabilityGood()) return {title:'スマホを静かにしてお待ちください',detail:'大きく動かした後は、しばらく静止すると測定できます。',kind:'warn'};
     return {title:'スマホを水平にしてお待ちください',detail:'測定の準備をしています。',kind:'warn'};
   }
 
@@ -151,10 +175,11 @@ pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!
     const recordBtn=$('recordBtn');
     if(!recordBtn||isRecording()) return;
     const shouldEnable=canUserMeasure();
-    if(recordBtn.disabled===shouldEnable) recordBtn.disabled=!shouldEnable;
+    recordBtn.disabled=!shouldEnable;
   }
 
   function updateMeasureStatus(){
+    updateMotionBlock();
     applyMeasurementGate();
     const status=ensureMeasureStatus();
     if(!status) return;
@@ -180,7 +205,7 @@ pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!
 
   function bindMeasureStatus(){
     const recordBtn=$('recordBtn');
-    const targets=[recordBtn,$('recordingBox'),$('gateText'),$('cameraStatus'),$('sensorStatus'),$('gpsStatus'),$('readyStatus')].filter(Boolean);
+    const targets=[recordBtn,$('recordingBox'),$('gateText'),$('cameraStatus'),$('sensorStatus'),$('gpsStatus'),$('rotationRate')].filter(Boolean);
     const observer=new MutationObserver(()=>queueMicrotask(updateMeasureStatus));
     targets.forEach(target=>observer.observe(target,{attributes:true,childList:true,subtree:true,characterData:true}));
     recordBtn?.addEventListener('click',event=>{
