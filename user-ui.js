@@ -5,6 +5,9 @@
   const STORE='sessions';
   const $=id=>document.getElementById(id);
 
+  let pendingSession=null;
+  let pendingCapturePromise=null;
+
   const USER_CSS=`
 html,body{width:100%;height:100%;overflow:hidden;background:#000}
 body{overscroll-behavior:none}
@@ -32,7 +35,12 @@ body{overscroll-behavior:none}
 #resultCard .user-estimated .label{font-size:.82rem!important;color:#ddd!important}
 #resultCard .user-estimated .value{font-size:3.2rem!important;line-height:1.15!important;color:#fff!important;margin-top:8px!important}
 #resultCard #resultDetail,#resultCard #downloadBtn,#resultCard #shareLatestBtn{display:none!important}
-#resultCard #againBtn{max-width:420px!important;margin-top:28px!important;padding:15px!important;background:#f59f00!important;color:#111!important}
+#userResultActions{width:100%;max-width:420px;margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#userResultActions button{width:100%!important;margin:0!important;padding:15px 10px!important;border-radius:14px!important;font-size:15px!important}
+#userSaveResultBtn{background:#f59f00!important;color:#111!important}
+#userSaveResultBtn:disabled{opacity:.5!important}
+#resultCard #againBtn{background:#eef1f4!important;color:#222!important}
+#userSaveState{min-height:1.4em;margin-top:10px;font-size:.78rem;color:#ddd}
 #userMenuBtn{position:fixed;z-index:25;left:calc(12px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));width:48px;height:48px;border-radius:50%;border:0;background:rgba(0,0,0,.58);color:#fff;font-size:24px;line-height:1;margin:0;padding:0;box-shadow:none}
 #userMenuBackdrop{position:fixed;inset:0;z-index:35;background:rgba(0,0,0,.38)}
 #userMenuBackdrop.hidden,#userSavedPanel.hidden{display:none!important}
@@ -61,6 +69,7 @@ body{overscroll-behavior:none}
     const recordBtn=$('recordBtn');
     const history=$('history');
     const resultCard=$('resultCard');
+    const againBtn=$('againBtn');
 
     const headerCard=wrap.querySelector(':scope > .card');
     headerCard?.classList.add('user-hide');
@@ -75,7 +84,23 @@ body{overscroll-behavior:none}
       const h2=resultCard.querySelector('h2');
       if(h2) h2.textContent='推定結果';
     }
-    if($('againBtn')) $('againBtn').textContent='もう一度測る';
+    if(againBtn) againBtn.textContent='再測定';
+
+    if(resultCard&&againBtn&&!$('userSaveResultBtn')){
+      const actions=document.createElement('div');
+      actions.id='userResultActions';
+      const saveBtn=document.createElement('button');
+      saveBtn.id='userSaveResultBtn';
+      saveBtn.type='button';
+      saveBtn.textContent='履歴に保存';
+      saveBtn.disabled=true;
+      const saveState=document.createElement('div');
+      saveState.id='userSaveState';
+      saveState.textContent='';
+      againBtn.parentNode.insertBefore(actions,againBtn);
+      actions.append(saveBtn,againBtn);
+      actions.insertAdjacentElement('afterend',saveState);
+    }
 
     if(!$('userMenuBtn')){
       const menuBtn=document.createElement('button');
@@ -123,12 +148,24 @@ body{overscroll-behavior:none}
     return rows.sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
   }
 
+  async function putSession(session){
+    const db=await openDb();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).put(session);
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error);
+    });
+    db.close();
+  }
+
   async function deleteSession(id){
     const db=await openDb();
     await new Promise((resolve,reject)=>{
-      const req=db.transaction(STORE,'readwrite').objectStore(STORE).delete(id);
-      req.onsuccess=()=>resolve();
-      req.onerror=()=>reject(req.error);
+      const tx=db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).delete(id);
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error);
     });
     db.close();
   }
@@ -272,6 +309,106 @@ body{overscroll-behavior:none}
     }
   }
 
+  function setPendingUi(state,message=''){
+    const saveBtn=$('userSaveResultBtn');
+    const saveState=$('userSaveState');
+    if(!saveBtn) return;
+    if(state==='loading'){
+      saveBtn.disabled=true;
+      saveBtn.textContent='準備中…';
+    }else if(state==='ready'){
+      saveBtn.disabled=false;
+      saveBtn.textContent='履歴に保存';
+    }else if(state==='saved'){
+      saveBtn.disabled=true;
+      saveBtn.textContent='保存しました';
+    }else{
+      saveBtn.disabled=true;
+      saveBtn.textContent='履歴に保存';
+    }
+    if(saveState) saveState.textContent=message;
+  }
+
+  async function stageLatestMeasurement(){
+    if(pendingCapturePromise) return pendingCapturePromise;
+    pendingCapturePromise=(async()=>{
+      setPendingUi('loading');
+      const sessions=await getSessions();
+      const newest=sessions[0];
+      if(!newest){
+        pendingSession=null;
+        setPendingUi('none','測定データを取得できませんでした。');
+        return;
+      }
+
+      const createdMs=Date.parse(newest.created_at||'');
+      const ageMs=Number.isFinite(createdMs)?Math.abs(Date.now()-createdMs):Infinity;
+      if(ageMs>120000){
+        pendingSession=null;
+        setPendingUi('none','今回の測定データを特定できませんでした。');
+        return;
+      }
+
+      pendingSession=newest;
+      await deleteSession(newest.session_id);
+      setPendingUi('ready');
+    })().catch(err=>{
+      console.error('failed to stage measurement',err);
+      pendingSession=null;
+      setPendingUi('none','一時結果の準備に失敗しました。');
+    }).finally(()=>{
+      pendingCapturePromise=null;
+    });
+    return pendingCapturePromise;
+  }
+
+  async function savePendingMeasurement(){
+    if(pendingCapturePromise) await pendingCapturePromise;
+    if(!pendingSession) return;
+    const session=pendingSession;
+    try{
+      await putSession(session);
+      pendingSession=null;
+      setPendingUi('saved','履歴に保存しました。');
+      const savedPanel=$('userSavedPanel');
+      if(savedPanel&&!savedPanel.classList.contains('hidden')) await renderSavedData();
+    }catch(err){
+      console.error('failed to save pending measurement',err);
+      setPendingUi('ready','保存に失敗しました。もう一度お試しください。');
+    }
+  }
+
+  async function discardPendingAndRemeasure(){
+    if(pendingCapturePromise) await pendingCapturePromise;
+    if(pendingSession){
+      try{await deleteSession(pendingSession.session_id);}catch(err){console.error('failed to discard pending measurement',err);}
+    }
+    pendingSession=null;
+    setPendingUi('none');
+    $('resultCard')?.classList.add('hidden');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  function bindResultChoiceFlow(){
+    const resultCard=$('resultCard');
+    const saveBtn=$('userSaveResultBtn');
+    const againBtn=$('againBtn');
+    if(!resultCard||!saveBtn||!againBtn) return;
+
+    saveBtn.addEventListener('click',savePendingMeasurement);
+    againBtn.onclick=discardPendingAndRemeasure;
+
+    const syncResultState=()=>{
+      if(!resultCard.classList.contains('hidden')){
+        pendingSession=null;
+        setPendingUi('loading');
+        stageLatestMeasurement();
+      }
+    };
+    new MutationObserver(syncResultState).observe(resultCard,{attributes:true,attributeFilter:['class']});
+    syncResultState();
+  }
+
   function bindUserEvents(){
     const menuBtn=$('userMenuBtn');
     const menuBackdrop=$('userMenuBackdrop');
@@ -300,6 +437,8 @@ body{overscroll-behavior:none}
     if(history&&savedPanel){
       new MutationObserver(()=>{if(!savedPanel.classList.contains('hidden')) renderSavedData();}).observe(history,{childList:true,subtree:true,characterData:true});
     }
+
+    bindResultChoiceFlow();
   }
 
   function init(){
