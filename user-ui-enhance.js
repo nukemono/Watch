@@ -1,17 +1,23 @@
 (()=>{
   'use strict';
 
+  const DB_NAME='solarwatch_iphone_field_v1';
+  const STORE='sessions';
   const $=id=>document.getElementById(id);
+  let countRefreshSerial=0;
 
   const CSS=`
-#userMeasureStatus{position:absolute;z-index:12;left:16px;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.62);color:#fff;text-align:center;font-size:.82rem;line-height:1.45;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
-#userMeasureStatus.ready{background:rgba(8,127,91,.84)}
-#userMeasureStatus.bad{background:rgba(157,38,38,.88)}
+#userMeasureStatus{position:absolute;z-index:22;left:24px;right:24px;top:50%;transform:translateY(-50%);padding:22px 18px;border-radius:18px;background:rgba(0,0,0,.74);color:#fff;text-align:center;line-height:1.45;box-shadow:0 10px 36px rgba(0,0,0,.28);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);pointer-events:none}
+#userMeasureStatus .user-measure-title{display:block;font-size:1.35rem;font-weight:850;letter-spacing:.01em}
+#userMeasureStatus .user-measure-detail{display:block;margin-top:7px;font-size:.82rem;font-weight:600;color:#eee}
+#userMeasureStatus.bad{background:rgba(157,38,38,.9)}
+#userMeasureStatus.ready{display:none!important}
 #userSaveState{width:100%;max-width:420px;box-sizing:border-box;padding:9px 11px!important;border-radius:10px;font-size:.8rem!important;line-height:1.45;color:#eee!important;background:rgba(255,255,255,.08)}
 #userSaveState.pending{background:rgba(245,159,0,.18)!important;color:#ffe7a8!important}
 #userSaveState.saved{background:rgba(8,127,91,.38)!important;color:#dff8ea!important}
 #userSaveState.error{background:rgba(184,50,50,.34)!important;color:#ffdada!important}
-#userSavedCount{font-size:.78rem;color:#68707a;margin:-5px 0 12px}
+#userSavedCount{font-size:.82rem;font-weight:700;color:#68707a;margin:-5px 0 12px}
+#userDeleteAllBtn{width:100%;margin:0 0 14px;padding:12px;border-radius:12px;background:#fff0f0;color:#9d2626;border:1px solid #efc7c7;font-weight:800}
 .user-session-status{display:inline-block;margin-top:8px;padding:4px 8px;border-radius:999px;font-size:.72rem;font-weight:700;background:#eaf8ef;color:#086b4e}
 .user-session-status.warn{background:#fff4d6;color:#7a5200}
 pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!important;padding:0!important;border:1px solid #e5e8ec!important;background:#f7f8fa!important;overflow:hidden!important}
@@ -29,6 +35,40 @@ pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!
     style.id='solarwatchUserEnhanceStyle';
     style.textContent=CSS;
     document.head.appendChild(style);
+  }
+
+  function openDb(){
+    return new Promise((resolve,reject)=>{
+      const req=indexedDB.open(DB_NAME,1);
+      req.onupgradeneeded=()=>{
+        const db=req.result;
+        if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE,{keyPath:'session_id'});
+      };
+      req.onsuccess=()=>resolve(req.result);
+      req.onerror=()=>reject(req.error);
+    });
+  }
+
+  async function savedCount(){
+    const db=await openDb();
+    const count=await new Promise((resolve,reject)=>{
+      const req=db.transaction(STORE,'readonly').objectStore(STORE).count();
+      req.onsuccess=()=>resolve(req.result||0);
+      req.onerror=()=>reject(req.error);
+    });
+    db.close();
+    return count;
+  }
+
+  async function clearSavedSessions(){
+    const db=await openDb();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(STORE,'readwrite');
+      tx.objectStore(STORE).clear();
+      tx.oncomplete=()=>resolve();
+      tx.onerror=()=>reject(tx.error);
+    });
+    db.close();
   }
 
   function fmtNumber(value,digits=1,suffix=''){
@@ -51,25 +91,47 @@ pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!
     })[ch]);
   }
 
-  function friendlyMeasureState(){
-    const recordBtn=$('recordBtn');
+  function isRecording(){
     const recordingBox=$('recordingBox');
+    return !!(recordingBox&&!recordingBox.classList.contains('hidden'));
+  }
+
+  function stabilityGood(){
+    const ready=$('readyStatus');
+    if(!ready) return false;
+    return ready.classList.contains('ok')||/安定性:\s*良好/.test(ready.textContent||'');
+  }
+
+  function coreMeasurementReady(){
+    const gateText=($('gateText')?.textContent||'').trim();
+    return /^測定できます/.test(gateText);
+  }
+
+  function canUserMeasure(){
+    if(isRecording()) return false;
+    return stabilityGood()&&coreMeasurementReady();
+  }
+
+  function friendlyMeasureState(){
     const gateText=($('gateText')?.textContent||'').trim();
     const cameraText=($('cameraStatus')?.textContent||'').trim();
     const sensorText=($('sensorStatus')?.textContent||'').trim();
     const gpsText=($('gpsStatus')?.textContent||'').trim();
+    const readyText=($('readyStatus')?.textContent||'').trim();
 
-    if(recordingBox&&!recordingBox.classList.contains('hidden')) return {recording:true,text:'',kind:''};
-    if(/失敗|停止|不可/.test(cameraText)) return {text:'カメラを利用できません。ブラウザの許可状態を確認してください。',kind:'bad'};
-    if(/失敗|許可されません/.test(sensorText)) return {text:'センサーを利用できません。ブラウザの許可状態を確認してください。',kind:'bad'};
-    if(/非対応|denied|permission/i.test(gpsText)) return {text:'位置情報を利用できません。ブラウザの許可状態を確認してください。',kind:'bad'};
-    if(recordBtn&&!recordBtn.disabled) return {text:'測定できます。太陽を中央に合わせてください。',kind:'ready'};
-    if(/水平|北基準/.test(gateText)) return {text:'端末をできるだけ水平にして、方位の準備が終わるまで少し待ってください。',kind:'warn'};
-    if(/GPS待機/.test(gateText)||/GPS: 待機/.test(gpsText)) return {text:'位置情報を取得しています。',kind:'warn'};
-    if(/GPS精度/.test(gateText)) return {text:'位置情報が安定するまでお待ちください。',kind:'warn'};
-    if(/WMM|偏角/.test(gateText)) return {text:'方位を準備しています。',kind:'warn'};
-    if(/3D方位|canonical|方位・高度|取得待ち/.test(gateText)) return {text:'端末の向きを取得しています。',kind:'warn'};
-    return {text:'測定の準備をしています。',kind:'warn'};
+    if(isRecording()) return {recording:true,title:'',detail:'',kind:''};
+    if(/失敗|停止|不可/.test(cameraText)) return {title:'カメラを利用できません',detail:'ブラウザのカメラ許可状態を確認してください。',kind:'bad'};
+    if(/失敗|許可されません/.test(sensorText)) return {title:'センサーを利用できません',detail:'ブラウザのセンサー許可状態を確認してください。',kind:'bad'};
+    if(/非対応|denied|permission/i.test(gpsText)) return {title:'位置情報を利用できません',detail:'ブラウザの位置情報許可状態を確認してください。',kind:'bad'};
+    if(canUserMeasure()) return {title:'測定できます',detail:'',kind:'ready'};
+    if(/GPS待機/.test(gateText)||/GPS:\s*待機/.test(gpsText)) return {title:'スマホを水平にしてお待ちください',detail:'位置情報を取得しています。',kind:'warn'};
+    if(/GPS精度/.test(gateText)) return {title:'スマホを水平にしてお待ちください',detail:'位置情報が安定するまで待っています。',kind:'warn'};
+    if(/水平|北基準/.test(gateText)) return {title:'スマホを水平にしてお待ちください',detail:'方位の基準を準備しています。',kind:'warn'};
+    if(/WMM|偏角/.test(gateText)) return {title:'スマホを水平にしてお待ちください',detail:'方位を準備しています。',kind:'warn'};
+    if(/3D方位|canonical|方位・高度|取得待ち/.test(gateText)) return {title:'スマホを水平にしてお待ちください',detail:'端末の向きを取得しています。',kind:'warn'};
+    if(/安定中/.test(readyText)) return {title:'スマホを静かにしてお待ちください',detail:'測定できる状態になるまで安定を確認しています。',kind:'warn'};
+    if(!stabilityGood()) return {title:'スマホを静かにしてお待ちください',detail:'大きく動かした後は、しばらく静止すると測定できます。',kind:'warn'};
+    return {title:'スマホを水平にしてお待ちください',detail:'測定の準備をしています。',kind:'warn'};
   }
 
   function ensureMeasureStatus(){
@@ -85,7 +147,15 @@ pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!
     return status;
   }
 
+  function applyMeasurementGate(){
+    const recordBtn=$('recordBtn');
+    if(!recordBtn||isRecording()) return;
+    const shouldEnable=canUserMeasure();
+    if(recordBtn.disabled===shouldEnable) recordBtn.disabled=!shouldEnable;
+  }
+
   function updateMeasureStatus(){
+    applyMeasurementGate();
     const status=ensureMeasureStatus();
     if(!status) return;
     const state=friendlyMeasureState();
@@ -94,14 +164,31 @@ pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!
       return;
     }
     status.style.display='block';
-    status.textContent=state.text;
     status.className=state.kind||'warn';
+    status.replaceChildren();
+    const title=document.createElement('span');
+    title.className='user-measure-title';
+    title.textContent=state.title;
+    status.appendChild(title);
+    if(state.detail){
+      const detail=document.createElement('span');
+      detail.className='user-measure-detail';
+      detail.textContent=state.detail;
+      status.appendChild(detail);
+    }
   }
 
   function bindMeasureStatus(){
-    const targets=[$('recordBtn'),$('recordingBox'),$('gateText'),$('cameraStatus'),$('sensorStatus'),$('gpsStatus')].filter(Boolean);
-    const observer=new MutationObserver(updateMeasureStatus);
+    const recordBtn=$('recordBtn');
+    const targets=[recordBtn,$('recordingBox'),$('gateText'),$('cameraStatus'),$('sensorStatus'),$('gpsStatus'),$('readyStatus')].filter(Boolean);
+    const observer=new MutationObserver(()=>queueMicrotask(updateMeasureStatus));
     targets.forEach(target=>observer.observe(target,{attributes:true,childList:true,subtree:true,characterData:true}));
+    recordBtn?.addEventListener('click',event=>{
+      if(canUserMeasure()) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      updateMeasureStatus();
+    },true);
     updateMeasureStatus();
   }
 
@@ -176,11 +263,8 @@ pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!
     pre.innerHTML='<span class="log-head">測定ログ</span>'+rowHtml+'<span class="log-note">'+escapeHtml(note)+'</span>';
   }
 
-  function enhanceSavedCards(){
-    const list=$('userSavedList');
-    if(!list) return;
-    const cards=[...list.querySelectorAll('.user-session')];
-
+  async function updateSavedCount(){
+    const serial=++countRefreshSerial;
     let count=$('userSavedCount');
     if(!count){
       count=document.createElement('div');
@@ -188,14 +272,30 @@ pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!
       const share=$('userShareAllBtn');
       share?.parentNode.insertBefore(count,share);
     }
-    if(count) count.textContent='保存 '+cards.length+'件';
+    if(!count) return;
+    try{
+      const n=await savedCount();
+      if(serial!==countRefreshSerial) return;
+      count.textContent='保存 '+n+'件';
+    }catch(err){
+      console.error('failed to count saved sessions',err);
+      count.textContent='保存件数を取得できませんでした';
+    }
+  }
+
+  function enhanceSavedCards(){
+    const list=$('userSavedList');
+    if(!list) return;
+    const cards=[...list.querySelectorAll('.user-session')];
 
     for(const card of cards){
       const pre=card.querySelector('pre.user-log');
       makeReadableLog(pre);
 
       const actions=card.querySelector('.user-session-actions');
-      const logBtn=actions?.querySelector('button');
+      const buttons=actions?[...actions.querySelectorAll('button')]:[];
+      const logBtn=buttons[0];
+      const deleteBtn=buttons[2];
       if(logBtn&&!logBtn.dataset.readableToggle){
         logBtn.dataset.readableToggle='1';
         logBtn.textContent='ログを見る';
@@ -204,6 +304,7 @@ pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!
           logBtn.textContent=log?.classList.contains('hidden')?'ログを見る':'ログを閉じる';
         },0));
       }
+      if(deleteBtn) deleteBtn.textContent='1件削除';
 
       if(!card.querySelector('.user-session-status')){
         let valid=true;
@@ -218,14 +319,45 @@ pre.user-log.user-readable-log{font-family:inherit!important;white-space:normal!
         if(actionsEl) card.insertBefore(chip,actionsEl);
       }
     }
+    updateSavedCount();
+  }
+
+  function ensureDeleteAllButton(){
+    if($('userDeleteAllBtn')) return;
+    const share=$('userShareAllBtn');
+    if(!share) return;
+    const button=document.createElement('button');
+    button.id='userDeleteAllBtn';
+    button.type='button';
+    button.textContent='保存データをすべて削除';
+    share.insertAdjacentElement('afterend',button);
+    button.addEventListener('click',async()=>{
+      if(!confirm('保存済みの測定データをすべて削除しますか？\nこの操作は取り消せません。')) return;
+      try{
+        await clearSavedSessions();
+        const list=$('userSavedList');
+        if(list) list.innerHTML='<div class="user-empty">保存データはありません。</div>';
+        if(share) share.disabled=true;
+        await updateSavedCount();
+      }catch(err){
+        console.error('failed to clear saved sessions',err);
+        alert('保存データの削除に失敗しました。');
+      }
+    });
   }
 
   function bindSavedLogEnhancement(){
     const list=$('userSavedList');
     if(!list) return;
+    ensureDeleteAllButton();
     const observer=new MutationObserver(()=>queueMicrotask(enhanceSavedCards));
     observer.observe(list,{childList:true,subtree:true});
+    $('userSavedBtn')?.addEventListener('click',()=>setTimeout(()=>{
+      enhanceSavedCards();
+      updateSavedCount();
+    },0));
     enhanceSavedCards();
+    updateSavedCount();
   }
 
   function init(){
