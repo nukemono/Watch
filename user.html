@@ -23,7 +23,7 @@ body{margin:0;background:#000;color:#fff;font-family:-apple-system,BlinkMacSyste
     if(!src.includes(terminal)) throw new Error('統合検証版の出力位置が見つかりません');
 
     const replacement=[
-      "  html=html.replace('</body>','<script src=\"user-ui.js\"><\\/script>\\n</body>');",
+      "  html=html.replace('</body>','<script src=\"user-ui.js\"><\\/script>\\n<script src=\"user-ui-enhance.js\"><\\/script>\\n</body>');",
       terminal
     ].join('\n');
 
