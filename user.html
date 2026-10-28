@@ -43,7 +43,7 @@ body{margin:0;background:#000;color:#fff;font-family:-apple-system,BlinkMacSyste
       "  userReplace(\"      await startCamera();\\n      startGps();\\n      $('startBtn').textContent='取得中';\",\"      await startCamera();\\n      if(!$('cameraStatus').classList.contains('ok')){ $('startBtn').disabled=false; $('startBtn').textContent='カメラを再取得'; return; }\\n      startGps();\\n      $('startBtn').textContent='取得中';\",'camera start guard');",
       "  userReplace(\"    state.latestSession=session;\\n    try{ await saveSession(session); }catch(e){ alert('保存エラー: '+e.message); }\\n    showResult(session); await renderHistory();\\n    $('recordingBox').classList.add('hidden');\\n    state.finishInProgress=false;\\n    render();\",\"    state.latestSession=session;\\n    window.__solarwatchUserPendingSession=session;\\n    showResult(session);\\n    $('recordingBox').classList.add('hidden');\\n    state.finishInProgress=false;\\n    render();\",'pending result flow');",
       "  userReplace('  renderHistory();\\n})();','  // ユーザー版では統合検証用履歴を初期描画しない。\\n})();','hidden history init');",
-      "  userReplace('</body>','<script src=\"user-app-v2.js?v=20261023d\"><\\/script>\\n</body>','user app loader');",
+      "  userReplace('</body>','<script src=\"user-app-v2.js?v=20261028a\"><\\/script>\\n</body>','user app loader');",
       terminal
     ].join('\n');
 
