@@ -66,12 +66,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000}body{overscroll
   function syncUi(){
     const start=$('startBtn'),permission=start?.closest('.user-permission-card'),camera=($('cameraStatus')?.textContent||''),sensor=($('sensorStatus')?.textContent||''),gps=($('gpsStatus')?.textContent||''),gate=($('gateText')?.textContent||''),record=$('recordBtn');
     if(start&&permission){const cameraOk=/カメラ:\s*OK/.test(camera)&&start.disabled&&start.textContent.trim()==='取得中';permission.classList.toggle('user-permission-done',cameraOk);}
+    updatePermissionRecovery(camera,sensor,gps);
     const ready=!!(record&&!record.disabled&&/^測定できます/.test(gate));
     if(ready)initialStabilityDone=true;
     if(isRecording()){setStatusBox('','','recording');}
-    else if(/失敗|停止|不可/.test(camera))setStatusBox('カメラを利用できません','開始ボタンから再取得してください。','bad');
-    else if(/失敗|許可されません/.test(sensor))setStatusBox('センサーを利用できません','ブラウザの許可状態を確認してください。','bad');
-    else if(/非対応|denied|permission/i.test(gps))setStatusBox('位置情報を利用できません','ブラウザの許可状態を確認してください。','bad');
+    else if(/失敗|停止|不可/.test(camera))setStatusBox('カメラを利用できません','Chromeのサイト情報からカメラの権限を確認してください。','bad');
+    else if(/失敗|許可されません|拒否/.test(sensor))setStatusBox('センサーを利用できません','ブラウザのセンサー権限を確認してください。','bad');
+    else if(/非対応|拒否|denied|permission/i.test(gps))setStatusBox('位置情報を利用できません','Chromeのサイト情報から位置情報を許可してください。','bad');
     else if(ready)setStatusBox('測定できます','','ready');
     else if(!initialStabilityDone)setStatusBox('スマホを水平にしてお待ちください','','warn');
     else if(/GPS/.test(gate))setStatusBox('位置情報を確認しています','','warn','post-initial');
@@ -105,7 +106,57 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000}body{overscroll
   }
 
   function startPolling(){if(pollTimer)return;pollTimer=setInterval(()=>{if(!document.hidden)syncUi();},300);}
-  function init(){try{installShell();bind();syncUi();startPolling();$('userBootShield')?.remove();}catch(e){console.error(e);const s=$('userBootShield');if(s){s.textContent='ユーザー版の初期化に失敗しました。';s.classList.add('bad');}}}
+  // サイトで拒否した権限はページの再読込だけでは解除できない。
+  // 計算・センサー取得コードには触れず、復旧手順と再試行だけ追加する。
+  function installPermissionRecovery(){
+    const start=$('startBtn');
+    const permission=start?.closest('.user-permission-card');
+    const main=$('recordBtn')?.closest('.user-main-card');
+    if(!start||!permission||!main)return;
+    const style=document.createElement('style');
+    style.id='solarwatchPermissionRecoveryStyle';
+    style.textContent=`
+      .user-permission-card{flex-direction:column!important;gap:14px!important}
+      #userPermissionHelp{max-width:420px;width:100%;padding:14px;border-radius:12px;background:#402323;color:#fff;line-height:1.55;text-align:left;font-size:14px}
+      #userPermissionHelp[hidden],#userPermissionReloadBtn[hidden]{display:none!important}
+      #userPermissionReloadBtn{position:absolute;z-index:25;top:calc(50% + 100px);left:50%;transform:translateX(-50%);width:min(90%,360px);padding:13px 12px;border-radius:12px;border:1px solid #fff;background:#fff;color:#111;font-size:15px;font-weight:700;box-shadow:0 3px 15px rgba(0,0,0,.3)}
+    `;
+    document.head.appendChild(style);
+    const help=document.createElement('div');
+    help.id='userPermissionHelp';
+    help.setAttribute('role','alert');
+    help.hidden=true;
+    permission.appendChild(help);
+    const retry=document.createElement('button');
+    retry.id='userPermissionReloadBtn';
+    retry.type='button';
+    retry.textContent='権限を変更した後に再取得';
+    retry.hidden=true;
+    retry.addEventListener('click',()=>location.reload());
+    main.appendChild(retry);
+  }
+
+  function updatePermissionRecovery(camera,sensor,gps){
+    const cameraError=/カメラ:\s*(?:失敗|停止|利用不可|不可)/.test(camera);
+    const sensorError=/センサー:\s*(?:失敗|許可なし|拒否|非対応)/.test(sensor);
+    const gpsDenied=/GPS:.*(?:拒否|denied|permission|not allowed)/i.test(gps);
+    const gpsOtherError=!gpsDenied && /GPS:.*(?:失敗|timeout|timed out|非対応|unavailable)/i.test(gps);
+    const help=$('userPermissionHelp');
+    const retry=$('userPermissionReloadBtn');
+    const browserGuide='Chromeのアドレスバー左のサイト情報 → 権限（サイトの設定）で、カメラ・位置情報を「許可」に変更してください。センサーも拒否した場合はモーションセンサーの設定も確認してください。';
+    if(help){
+      const show=cameraError||sensorError;
+      help.hidden=!show;
+      if(show)help.textContent=(cameraError?'カメラを取得できません。':'センサーを取得できません。')+' '+browserGuide+' 設定変更後、この画面の開始・再取得ボタンを押してください。';
+    }
+    if(retry){
+      const show=gpsDenied||gpsOtherError;
+      retry.hidden=!show;
+      if(show)retry.textContent=gpsDenied?'サイトの位置情報を許可した後、再取得':'位置情報を確認して再取得';
+    }
+  }
+
+  function init(){try{installShell();installPermissionRecovery();bind();syncUi();startPolling();$('userBootShield')?.remove();}catch(e){console.error(e);const s=$('userBootShield');if(s){s.textContent='ユーザー版の初期化に失敗しました。';s.classList.add('bad');}}}
   window.addEventListener('pageshow',()=>{startPolling();syncUi();});
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
 })();
