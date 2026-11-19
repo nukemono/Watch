@@ -70,8 +70,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000}body{overscroll
     if(ready)initialStabilityDone=true;
     if(isRecording()){setStatusBox('','','recording');}
     else if(/失敗|停止|不可/.test(camera))setStatusBox('カメラを利用できません','開始ボタンから再取得してください。','bad');
-    else if(/失敗|許可されません/.test(sensor))setStatusBox('センサーを利用できません','ブラウザの許可状態を確認してください。','bad');
-    else if(/非対応|denied|permission/i.test(gps))setStatusBox('位置情報を利用できません','ブラウザの許可状態を確認してください。','bad');
+    else if(/失敗|許可なし|許可されません/.test(sensor))setStatusBox('センサーを利用できません','ブラウザのサイト権限を確認し、再取得してください。','bad');
+    else if(/非対応|権限拒否|取得失敗|タイムアウト|denied|permission/i.test(gps))setStatusBox('位置情報を利用できません','サイト設定・端末の位置情報を確認し、再取得してください。','bad');
     else if(ready)setStatusBox('測定できます','','ready');
     else if(!initialStabilityDone)setStatusBox('スマホを水平にしてお待ちください','','warn');
     else if(/GPS/.test(gate))setStatusBox('位置情報を確認しています','','warn','post-initial');
