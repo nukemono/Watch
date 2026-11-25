@@ -319,8 +319,8 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
           setStatus('cameraStatus','カメラ: 停止','bad');
           $('fallback').textContent='カメラが停止しました。「カメラを再取得」を押してください。';
           $('fallback').classList.remove('hidden');
-          $('startBtn').disabled=false;
-          $('startBtn').textContent='カメラを再取得';
+          if(permissionRecoveryEnabled){notePermissionFailure('camera','カメラの接続が停止しました。');}
+          else{ $('startBtn').disabled=false; $('startBtn').textContent='カメラを再取得'; }
         };
       }
       $('fallback').classList.add('hidden');
@@ -329,6 +329,7 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
       $('fallback').textContent='カメラ取得不可: '+err.message;
       $('fallback').classList.remove('hidden');
       setStatus('cameraStatus','カメラ: 失敗','bad');
+      if(permissionRecoveryEnabled)notePermissionFailure('camera',err.name==='NotAllowedError'||err.name==='SecurityError'?'カメラへのアクセスが拒否されました。':'カメラを取得できませんでした: '+err.message);
     }
   }
 
@@ -343,8 +344,19 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
       };
       setStatus('gpsStatus','GPS: '+state.location.accuracy.toFixed(0)+'m',state.location.accuracy<=30?'ok':'warn');
       render();
+      if(permissionRecoveryEnabled)clearPermissionFailure('gps');
     },err=>{
       setStatus('gpsStatus','GPS: '+err.message,'bad');
+      if(permissionRecoveryEnabled){
+        if(err.code===1){
+          const hadLocation=!!state.location;
+          state.location=null;
+          if(hadLocation)render();
+          notePermissionFailure('gps','位置情報へのアクセスが拒否されました。');
+        }else if(!state.location){
+          notePermissionFailure('gps',err.code===3?'位置情報を時間内に取得できませんでした。屋外で受信状況を確認してください。':'位置情報を取得できませんでした。端末の位置情報設定を確認してください。');
+        }
+      }
     },{enableHighAccuracy:true,maximumAge:1000,timeout:15000});
   }
 
@@ -363,8 +375,13 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
       $('startBtn').textContent='取得中';
       $('startBtn').disabled=true;
     }catch(err){
-      alert(err.message);
-      setStatus('sensorStatus','センサー: 失敗','bad');
+      if(permissionRecoveryEnabled){
+        setStatus('sensorStatus','センサー: 失敗','bad');
+        notePermissionFailure('start','開始できませんでした: '+err.message);
+      }else{
+        alert(err.message);
+        setStatus('sensorStatus','センサー: 失敗','bad');
+      }
     }
   }
 
@@ -656,7 +673,100 @@ input{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;fon
     }).join('');
   }
 
-  $('startBtn').onclick=startAll;
+
+  // 権限の拒否はブラウザのサイト設定に保存される。既存の取得・測定順序は変えず、
+  // v4/ユーザー用だけ、失敗時に手順を表示し安全なページ再初期化を選べるようにする。
+  const permissionRecoveryEnabled=/(?:^|\/)(?:iphone-field-integrated|user)\.html$/.test(location.pathname);
+  const permissionErrors=new Map();
+  let permissionStartBusy=false, permissionRecoveryShown=false, permissionRetryTimer=null, permissionDataTimer=null;
+  function permissionGuide(target){
+    return target+'のアクセス設定を確認してください。Chromeのアドレスバー左のサイト情報 → 権限（サイトの設定）で、拒否したカメラ・位置情報・モーションセンサーを許可するか「権限をリセット」してください。iPhoneやAndroid本体のブラウザ権限も確認してください。設定変更後、下のボタンでページを再読み込みし、改めて開始してください。保存済みの測定データやCookieは削除しません。';
+  }
+  function permissionRecoveryBlocked(){
+    return state.recording||state.finishInProgress||
+      ['resultCard','userSavedPanel','userMenuBackdrop'].some(id=>{const el=$(id);return el&&!el.classList.contains('hidden');});
+  }
+  function refreshPermissionRecovery(){
+    if(!permissionRecoveryEnabled||permissionStartBusy)return;
+    const button=$('startBtn');
+    let help=$('permissionRecoveryGuide');
+    if(!permissionErrors.size){
+      if(permissionRetryTimer!==null){clearTimeout(permissionRetryTimer);permissionRetryTimer=null;}
+      if(help)help.classList.add('hidden');
+      if(permissionRecoveryShown){
+        permissionRecoveryShown=false;
+        button.textContent='取得中';
+        button.disabled=true;
+        const card=button.closest('.user-permission-card');
+        if(card){card.style.removeProperty('flex-direction');card.style.removeProperty('gap');card.style.removeProperty('overflow-y');}
+      }
+      return;
+    }
+    // 結果の保存・計測・履歴閲覧を中断したり、未保存データを自動破棄しない。
+    if(permissionRecoveryBlocked()){
+      if(permissionRetryTimer===null)permissionRetryTimer=setTimeout(()=>{permissionRetryTimer=null;refreshPermissionRecovery();},500);
+      return;
+    }
+    if(!help){
+      help=document.createElement('div');
+      help.id='permissionRecoveryGuide';
+      help.className='notice';
+      help.setAttribute('role','alert');
+      help.style.cssText='margin-top:10px;max-width:420px;width:100%;line-height:1.55;font-size:14px;white-space:pre-line;overflow-wrap:anywhere;text-align:left;';
+      button.parentNode.insertBefore(help,button);
+    }
+    const card=button.closest('.user-permission-card');
+    if(card){card.style.setProperty('flex-direction','column','important');card.style.setProperty('gap','12px','important');card.style.setProperty('overflow-y','auto','important');}
+    help.textContent=[...permissionErrors.values()].join('\n\n')+'\n\n'+permissionGuide('必要な権限');
+    help.classList.remove('hidden');
+    permissionRecoveryShown=true;
+    button.disabled=false;
+    button.textContent='権限確認後に再読み込み';
+  }
+  function notePermissionFailure(key,message){
+    if(!permissionRecoveryEnabled)return;
+    permissionErrors.set(key,message);
+    refreshPermissionRecovery();
+  }
+  function clearPermissionFailure(key){
+    if(!permissionRecoveryEnabled||!permissionErrors.delete(key))return;
+    refreshPermissionRecovery();
+  }
+  function watchInitialOrientationData(){
+    if(!permissionRecoveryEnabled||!state.started||permissionDataTimer!==null||[state.a,state.b,state.g].every(finite))return;
+    // 安定判定・北基準収束は変更しない。有効な姿勢データ自体が来ない場合だけ案内する。
+    const check=()=>{
+      permissionDataTimer=null;
+      if(document.hidden){permissionDataTimer=setTimeout(check,1000);return;}
+      if([state.a,state.b,state.g].every(finite)){clearPermissionFailure('orientation-data');return;}
+      notePermissionFailure('orientation-data','有効な姿勢データがまだ届いていません。モーションセンサーの許可・ブラウザの対応状況を確認してください。通常の安定待ちとは別の状態です。');
+      permissionDataTimer=setTimeout(check,1000);
+    };
+    permissionDataTimer=setTimeout(check,15000);
+  }
+  async function startWithPermissionRecovery(){
+    if(permissionStartBusy)return;
+    if(permissionRecoveryShown){
+      if(permissionRecoveryBlocked())return;
+      // URLのクエリだけ更新して旧キャッシュを避ける。オリジンとIndexedDBは維持する。
+      const next=new URL(location.href);
+      next.searchParams.set('v','20261125-permission1');
+      if(next.href===location.href)location.reload();else location.replace(next.href);
+      return;
+    }
+    permissionStartBusy=true;
+    try{
+      // iOSのユーザー操作起点と、既存のセンサー→カメラ→GPSの順序を維持。
+      await startAll();
+      if($('gpsStatus').textContent==='GPS: 非対応')notePermissionFailure('gps','位置情報APIを利用できません。');
+      if(state.started)watchInitialOrientationData();
+    }finally{
+      permissionStartBusy=false;
+      refreshPermissionRecovery();
+    }
+  }
+
+  $('startBtn').onclick=permissionRecoveryEnabled?startWithPermissionRecovery:startAll;
   $('recordBtn').onclick=record;
   $('againBtn').onclick=()=>{ $('resultCard').classList.add('hidden'); window.scrollTo({top:0,behavior:'smooth'}); };
   $('downloadBtn').onclick=()=>{ if(state.latestSession) download(state.latestSession.session_id+'.csv',csvText([state.latestSession])); };
