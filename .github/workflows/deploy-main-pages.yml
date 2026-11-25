@@ -20,10 +20,15 @@ jobs:
       - name: Checkout main
         uses: actions/checkout@v4
 
+      - name: Stage tracked site files outside deployment worktree
+        run: |
+          mkdir -p .pages-site
+          git archive HEAD | tar -x -C .pages-site
+
       - name: Deploy main while preserving PR previews
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: gh-pages
-          folder: .
+          folder: .pages-site
           clean-exclude: pr-preview
           force: false

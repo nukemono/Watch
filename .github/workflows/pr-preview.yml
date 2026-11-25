@@ -23,10 +23,15 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
+      - name: Stage tracked site files outside deployment worktree
+        run: |
+          mkdir -p .pages-site
+          git archive HEAD | tar -x -C .pages-site
+
       - name: Deploy preview
         uses: rossjrw/pr-preview-action@v1
         with:
-          source-dir: ./
+          source-dir: .pages-site
           preview-branch: gh-pages
           umbrella-dir: pr-preview
           action: auto
